@@ -1,3 +1,6 @@
 [submodule "submodules/swe_solvers"]
 	path = submodules/swe_solvers
 	url = git://github.com/TUM-I5/swe_solvers.git
+[submodule "submodules/fwave_solver"]
+	path = submodules/fwave_solver
+	url = https://github.com/mherb/tsunami-lab

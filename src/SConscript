@@ -33,7 +33,9 @@ Import('env')
 
 # Code without CUDA
 if env['parallelization'] not in ['cuda', 'mpi_with_cuda']:
-  if env['solver'] != 'rusanov':
+  if env['solver'] == 'dimsplit':
+    sourceFiles = ['blocks/SWE_DimensionalSplitting.cpp']
+  elif env['solver'] != 'rusanov':
     sourceFiles = ['blocks/SWE_WavePropagationBlock.cpp']
   else:
     sourceFiles = ['blocks/rusanov/SWE_RusanovBlock.cpp']
@@ -87,7 +89,9 @@ if env['xmlRuntime'] == True:
 # file containing the main-function
 if env['parallelization'] in ['none', 'cuda']:
   if env['solver'] != 'rusanov':
-    if env['openGL'] == False:
+    if env['solver'] == 'dimsplit':
+      sourceFiles.append( ['examples/swe_dimensionalsplitting.cpp'] )
+    elif env['openGL'] == False:
       sourceFiles.append( ['examples/swe_simple.cpp'] )
     else:
       sourceFiles.append( ['examples/swe_opengl.cpp'] )

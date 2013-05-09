@@ -29,8 +29,8 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
     float maxWaveSpeed, maxEdgeSpeed = 0.f;
     
     // X-sweep
-    for( unsigned int j = 0; j < ny+2; j++ ) {
-        for(unsigned int i = 0; i < nx+1; i++ ) {
+    for(int j = 0; j < ny+2; j++) {
+        for(int i = 0; i < nx+1; i++) {
             dimensionalSplittingSolver.computeNetUpdates( h[i][j], h[i+1][j],
                     hu[i][j], hu[i+1][j],
                     b[i][j], b[i+1][j],
@@ -48,19 +48,21 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
     // Compute CFL condition (slightly pessimistic)
     maxTimestep = dx/maxWaveSpeed * .4f;
     
+    assert(std::isfinite(maxTimestep));
+    
     // Update Q* (h*)
-    for (unsigned int j = 0; j < ny+2; j++) {
-        for (unsigned int i = 0; i < nx; i++) {
+    for (int j = 0; j < ny+2; j++) {
+        for (int i = 0; i < nx; i++) {
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
         }
     }
     
     // Y-sweep
-    for( unsigned int i = 0; i < nx; i++ ) {
-        for(unsigned int j = 0; j < ny+2; j++ ) {
+    for(int i = 0; i < nx; i++) {
+        for(int j = 0; j < ny+1; j++) {
             dimensionalSplittingSolver.computeNetUpdates( hStar[i][j], hStar[i][j+1],
-                    hv[i][j], hv[i][j+1],
-                    b[i][j], b[i][j+1],
+                    hv[i+1][j], hv[i+1][j+1],
+                    b[i+1][j], b[i+1][j+1],
                     hNetUpdatesBelow[i][j], hNetUpdatesAbove[i][j],
                     hvNetUpdatesBelow[i][j], hvNetUpdatesAbove[i][j],
                     maxEdgeSpeed );
@@ -88,14 +90,14 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
 
 void SWE_DimensionalSplitting::updateUnknowns(float dt)
 {
-    for (unsigned int i = 1; i < nx+1; i++) {
-        for (unsigned int j = 1; j < ny+1; j++) {
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < ny; j++) {
             // Update heights
-            h[i][j]  = hStar[i-1][j-1] - dt/dy * (hNetUpdatesBelow[i][j-1] + hNetUpdatesAbove[i][j]);
+            h[i+1][j+1]  = hStar[i][j] - dt/dy * (hNetUpdatesBelow[i][j] + hNetUpdatesAbove[i][j]);
             // Update momentum in x-direction
-            hu[i][j] -= dt/dx * (huNetUpdatesLeft[i-1][j-1] + huNetUpdatesRight[i][j-1]);
+            hu[i+1][j+1] -= dt/dx * (huNetUpdatesLeft[i+1][j+1] + huNetUpdatesRight[i][j+1]);
             // Update momentum in y-direction
-            hv[i][j] -= dt/dy * (hvNetUpdatesBelow[i-1][j-1] + hvNetUpdatesAbove[i-1][j]);
+            hv[i+1][j+1] -= dt/dy * (hvNetUpdatesBelow[i][j+1] + hvNetUpdatesAbove[i][j]);
         }
     }
 }

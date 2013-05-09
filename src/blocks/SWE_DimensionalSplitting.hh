@@ -3,35 +3,44 @@
 
 #include "blocks/SWE_Block.hh"
 #include "tools/help.hh"
-#include "solvers/FWave.cpp"
-#include "types.h"
+#include "fwave_solver/FWave.hpp"
 
 class SWE_DimensionalSplitting : public SWE_Block {
 private:
+    //! The solver used for local edge Riemann problems
+	solver::FWave<float> dimensionalSplittingSolver;
+    
+    //! net-updates for the heights of the cells on the left sides of the vertical edges.
+    Float2D hNetUpdatesLeft;
+    //! net-updates for the heights of the cells on the right sides of the vertical edges.
+    Float2D hNetUpdatesRight;
 
-	solver::FWave<float> m_solver;
+    //! net-updates for the x-momentums of the cells on the left sides of the vertical edges.
+    Float2D huNetUpdatesLeft;
+    //! net-updates for the x-momentums of the cells on the right sides of the vertical edges.
+    Float2D huNetUpdatesRight;
 
-	Float2D m_hNetUpdatesLeft;
-	Float2D m_hNetUpdatesRight;
-	Float2D m_huNetUpdatesLeft;
-	Float2D m_huNetUpdatesRight;
-	Float2D m_hNetUpdatesBelow;
-	Float2D m_hNetUpdatesAbove;
-	Float2D m_hvNetUpdatesBelow;
-	Float2D m_hvNetUpdatesAbove;
+    //! net-updates for the heights of the cells below the horizontal edges.
+    Float2D hNetUpdatesBelow;
+    //! net-updates for the heights of the cells above the horizontal edges.
+    Float2D hNetUpdatesAbove;
 
-	Float2D m_hStar;
-	Float2D m_huStar;
+    //! net-updates for the y-momentums of the cells below the horizontal edges.
+    Float2D hvNetUpdatesBelow;
+    //! net-updates for the y-momentums of the cells above the horizontal edges.
+    Float2D hvNetUpdatesAbove;
+    
+    //! intermediate height of the cells after the x-sweep has been performed.
+	Float2D hStar;
 	
 public:
     SWE_DimensionalSplitting(int l_nx, int l_ny,
         float l_dx, float l_dy);
-
     
-    virtual void simulateTimestep(float dt) = 0;
-    virtual float simulate(float tStart, float tEnd) = 0;
-    virtual void computeNumericalFluxes() = 0;
-    virtual void updateUnknowns(float dt) = 0;
+    void simulateTimestep(float dt);
+    float simulate(float tStart, float tEnd);
+    void computeNumericalFluxes();
+    void updateUnknowns(float dt);
     
 };
 

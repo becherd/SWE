@@ -93,7 +93,7 @@ void SWE_DimensionalSplitting::updateUnknowns(float dt)
     for (int i = 0; i < nx; i++) {
         for (int j = 0; j < ny; j++) {
             // Update heights
-            h[i+1][j+1]  = hStar[i][j] - dt/dy * (hNetUpdatesBelow[i][j] + hNetUpdatesAbove[i][j]);
+            h[i+1][j+1]  = hStar[i][j+1] - dt/dy * (hNetUpdatesAbove[i][j] + hNetUpdatesBelow[i][j+1]);
             // Update momentum in x-direction
             hu[i+1][j+1] -= dt/dx * (huNetUpdatesLeft[i+1][j+1] + huNetUpdatesRight[i][j+1]);
             // Update momentum in y-direction

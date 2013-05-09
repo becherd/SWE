@@ -37,7 +37,7 @@ class SWE_PartialDambreak : public SWE_Scenario {
      * @return time when to end simulation
      */
 	float endSimulation() {
-		return 30.0f;
+		return 50.0f;
 	};
 
    /**

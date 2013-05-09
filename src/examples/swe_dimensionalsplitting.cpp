@@ -3,6 +3,12 @@
 #include "blocks/SWE_DimensionalSplitting.hh"
 #include "scenarios/SWE_simple_scenarios.hh"
 
+#ifdef WRITENETCDF
+#include "writer/NetCdfWriter.hh"
+#else
+#include "writer/VtkWriter.hh"
+#endif
+
 #include "tools/help.hh"
 #include "tools/Logger.hh"
 #include "tools/ProgressBar.hh"
@@ -51,7 +57,7 @@ int main( int argc, char** argv ) {
     l_originY = l_scenario.getBoundaryPos(BND_BOTTOM);
 
     // initialize the wave propagation block
-    l_wavePropgationBlock.initScenario(l_originX, l_originY, l_scenario);
+    l_dimensionalSplitting.initScenario(l_originX, l_originY, l_scenario);
     
     //! time when the simulation ends.
     float l_endSimulation = l_scenario.endSimulation();
@@ -77,7 +83,7 @@ int main( int argc, char** argv ) {
   #ifdef WRITENETCDF
     //construct a NetCdfWriter
     io::NetCdfWriter l_writer( l_fileName,
-        l_wavePropgationBlock.getBathymetry(),
+        l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
   		l_dX, l_dY,
@@ -85,7 +91,7 @@ int main( int argc, char** argv ) {
   #else
     // consturct a VtkWriter
     io::VtkWriter l_writer( l_fileName,
-  		l_wavePropgationBlock.getBathymetry(),
+  		l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
   		l_dX, l_dY );
@@ -95,7 +101,7 @@ int main( int argc, char** argv ) {
                                 l_dimensionalSplitting.getDischarge_hu(),
                                 l_dimensionalSplitting.getDischarge_hv(),
                                 (float) 0.);
-
+    
     /**
      * Simulation.
      */
@@ -103,16 +109,16 @@ int main( int argc, char** argv ) {
     progressBar.clear();
     tools::Logger::logger.printStartMessage();
     tools::Logger::logger.initWallClockTime(time(NULL));
-
+    
     //! simulation time.
     float l_t = 0.0;
     progressBar.update(l_t);
-
+    
     unsigned int l_iterations = 0;
-
+    
     // loop over checkpoints
     for(int c = 1; c <= l_numberOfCheckPoints; c++) {
-
+        
         // do time steps until next checkpoint is reached
         while( l_t < l_checkPoints[c] ) {
             // set values in ghost cells:
@@ -146,34 +152,35 @@ int main( int argc, char** argv ) {
             progressBar.clear();
             tools::Logger::logger.printSimulationTime(l_t);
             progressBar.update(l_t);
-            
-            // print current simulation time of the output
-            progressBar.clear();
-            tools::Logger::logger.printOutputTime(l_t);
-            progressBar.update(l_t);
-            
-            // write output
-            l_writer.writeTimeStep( l_dimensionalSplitting.getWaterHeight(),
-                                  l_dimensionalSplitting.getDischarge_hu(),
-                                  l_dimensionalSplitting.getDischarge_hv(),
-                                  l_t);
+        }
+        // print current simulation time of the output
+        progressBar.clear();
+        tools::Logger::logger.printOutputTime(l_t);
+        progressBar.update(l_t);
+        
+        // write output
+        l_writer.writeTimeStep( l_dimensionalSplitting.getWaterHeight(),
+                              l_dimensionalSplitting.getDischarge_hu(),
+                              l_dimensionalSplitting.getDischarge_hv(),
+                              l_t);
     }
-
+    
     /**
      * Finalize.
      */
     // write the statistics message
     progressBar.clear();
     tools::Logger::logger.printStatisticsMessage();
-
+    
     // print the cpu time
     tools::Logger::logger.printCpuTime();
-
+    
     // print the wall clock time (includes plotting)
     tools::Logger::logger.printWallClockTime(time(NULL));
-
+    
     // printer iteration counter
     tools::Logger::logger.printIterationsDone(l_iterations);
-
+    
     return 0;
 }
+

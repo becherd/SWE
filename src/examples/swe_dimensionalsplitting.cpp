@@ -15,10 +15,11 @@
 #include "tools/ProgressBar.hh"
 
 int main( int argc, char** argv ) {
-    if(argc != 4) {
-         std::cout << "Usage: ./SWE_gnu_debug_none_dimsplit <x> <y> <name>" << std::endl
-                   << "    e.g. ./SWE_gnu_debug_none_dimsplit 100 200 test" << std::endl
-                   << "    For a block size of 100 x 200 and writing output with basename 'test'" << std::endl;
+    if(argc != 4 && argc != 5) {
+        std::cout << "Usage: ./SWE_gnu_debug_none_dimsplit <x> <y> <name> [checkpoints]" << std::endl
+                  << "    e.g. ./SWE_gnu_debug_none_dimsplit 100 200 test 50" << std::endl
+                  << "    For a block size of 100 x 200 and writing 50 checkpoints with basename 'test'" << std::endl;
+        return 1;
     }
     
     //! Number of cells in x direction
@@ -34,12 +35,13 @@ int main( int argc, char** argv ) {
     l_nY = atoi(argv[2]);
     l_baseName = std::string(argv[3]);    
     
+    //! number of checkpoints for visualization (at each checkpoint in time, an output file is written).
+    int l_numberOfCheckPoints = 20;
+    if(argc == 5)
+        l_numberOfCheckPoints = atoi(argv[4]);
     
     // create a simple artificial scenario
     SWE_PartialDambreak l_scenario;
-
-    //! number of checkpoints for visualization (at each checkpoint in time, an output file is written).
-    int l_numberOfCheckPoints = 20;
 
     //! size of a single cell in x- and y-direction
     float l_dX, l_dY;

@@ -1,12 +1,14 @@
 #ifndef __SWE_PARTIALDAMBREAK_HH
 #define __SWE_PARTIALDAMBREAK_HH
 
-#include <cmath>
-
 #include "SWE_Scenario.hh"
 
 /**
  * Scenario "Partial Dambreak"
+ *
+ * This scenario represents a water reservoir of height 10m seperated
+ * from a river of height 5m by a 5m thick dam. The dam has a width 
+ * of 200m and is partially broken on a width of 75m.
  */
 class SWE_PartialDambreak : public SWE_Scenario {
 
@@ -28,29 +30,28 @@ class SWE_PartialDambreak : public SWE_Scenario {
     float getWaterHeight(float x, float y) { 
 		if (x < 97.5f)
             return 10.0f;
-        else if (x <= 102.5f)
-            return 0.0f;
         return 5.0f;
     };
 	
 	/**
      * @return time when to end simulation
      */
-	virtual float endSimulation() { 
-		return 20.0f; 
+	float endSimulation() {
+		return 30.0f;
 	};
 
-
-	/**
-     * @return boundary type at edge
-     */
-	virtual BoundaryType getBoundaryType(BoundaryEdge edge) { 
+   /**
+    * Determines the type (e.g. reflecting wall or outflow) of a certain boundary
+    *
+    * @param edge The boundary edge
+    * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
+    */
+	BoundaryType getBoundaryType(BoundaryEdge edge) {
 		if (edge == BND_RIGHT)
 			return OUTFLOW;
 		return WALL;
 	};
-
-
+    
     /** Get the boundary positions
      *
      * @param i_edge which edge
@@ -67,8 +68,5 @@ class SWE_PartialDambreak : public SWE_Scenario {
          return 200.0f; 
     };
 };
-
-
-
 
 #endif /* SWE_PARTIALDAMBREAK_HH_ */

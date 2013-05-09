@@ -2,6 +2,7 @@
 
 #include "blocks/SWE_DimensionalSplitting.hh"
 #include "scenarios/SWE_simple_scenarios.hh"
+#include "scenarios/SWE_PartialDambreak.hh"
 
 #ifdef WRITENETCDF
 #include "writer/NetCdfWriter.hh"
@@ -35,7 +36,7 @@ int main( int argc, char** argv ) {
     
     
     // create a simple artificial scenario
-    SWE_BathymetryDamBreakScenario l_scenario;
+    SWE_PartialDambreak l_scenario;
 
     //! number of checkpoints for visualization (at each checkpoint in time, an output file is written).
     int l_numberOfCheckPoints = 20;

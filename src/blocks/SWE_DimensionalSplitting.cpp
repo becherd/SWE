@@ -54,6 +54,10 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
     for (int j = 0; j < ny+2; j++) {
         for (int i = 0; i < nx; i++) {
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
+            
+            // catch negative heights
+            if(hStar[i][j] < 0.0)
+                hStar[i][j] = 0.0;
         }
     }
     
@@ -98,6 +102,13 @@ void SWE_DimensionalSplitting::updateUnknowns(float dt)
             hu[i+1][j+1] -= dt/dx * (huNetUpdatesLeft[i+1][j+1] + huNetUpdatesRight[i][j+1]);
             // Update momentum in y-direction
             hv[i+1][j+1] -= dt/dy * (hvNetUpdatesBelow[i][j+1] + hvNetUpdatesAbove[i][j]);
+            
+            // catch negative heights
+            if(h[i+1][j+1] < 0.0) {
+                h[i+1][j+1] = 0.0;
+                hu[i+1][j+1] = 0.0;
+                hv[i+1][j+1] = 0.0;
+            }
         }
     }
 }

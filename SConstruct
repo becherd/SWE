@@ -117,7 +117,8 @@ vars.AddVariables(
 
 # set environment
 env = Environment(ENV = {'PATH': os.environ['PATH']},
-        variables=vars)
+        variables=vars,
+        tools = ['default', 'cxxtest'])
 
 # generate help text
 Help(vars.GenerateHelpText(env))

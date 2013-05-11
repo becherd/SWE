@@ -104,6 +104,12 @@ else:
   print >> sys.stderr, '** The selected configuration is not implemented.'
   Exit(1)
 
+env.CxxTest([
+    'tests/SWE_DimensionalSplittingTest.h',
+    env.Object('blocks/SWE_DimensionalSplitting.cpp'),
+    env.Object('blocks/SWE_Block.cpp')
+])
+
 # CPU compilation for sure
 for i in sourceFiles:
   env.src_files.append(env.Object(i))

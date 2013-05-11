@@ -86,7 +86,7 @@ public:
     };
 };
 
-/* Timecodes (for each row in the following checks array) */
+/* Timecodes (for each row in the following static "check" member variable) */
 const float DamBreak1DTestScenario::checkTimecodes[50] = {
     0.04038550,
     0.08004770,
@@ -140,6 +140,10 @@ const float DamBreak1DTestScenario::checkTimecodes[50] = {
     1.783110
 };
 
+
+/**
+ * These values have been pre-computed in SWE1D using the equivalent scenario of DamBreak1DTestScenario
+ */
 const float DamBreak1DTestScenario::check[50][50] = {
     {10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9.13397, 5.86603, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5},
     {10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9.69263, 8.59861, 6.4238, 5.28496, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5},
@@ -193,7 +197,10 @@ const float DamBreak1DTestScenario::check[50][50] = {
     {9.9448, 9.9052, 9.84708, 9.76717, 9.66359, 9.53609, 9.38598, 9.21587, 9.02921, 8.83005, 8.62274, 8.41195, 8.20272, 8.00061, 7.81183, 7.64326, 7.50178, 7.39295, 7.31873, 7.27581, 7.25606, 7.24969, 7.24901, 7.24986, 7.25077, 7.25147, 7.25196, 7.25229, 7.25247, 7.25252, 7.2524, 7.25204, 7.25113, 7.2488, 7.2427, 7.22722, 7.19039, 7.1095, 6.94888, 6.66978, 6.26721, 5.81483, 5.43613, 5.19848, 5.08004, 5.0296, 5.01022, 5.00331, 5.00101, 5.00029}
 };
 
-
+/**
+ * Unit test to check dimensional splitting against a 1D solution by simulating a 1D
+ * scenario in two dimensions
+ */
 class SWE_DimensionalSplittingTest : public CxxTest::TestSuite {
     private:
         /** tolerance for assertions */

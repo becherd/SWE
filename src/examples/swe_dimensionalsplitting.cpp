@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "blocks/SWE_DimensionalSplitting.hh"
-#include "scenarios/SWE_simple_scenarios.hh"
 #include "scenarios/SWE_PartialDambreak.hh"
 
 #ifdef WRITENETCDF
@@ -40,7 +39,7 @@ int main( int argc, char** argv ) {
     if(argc == 5)
         l_numberOfCheckPoints = atoi(argv[4]);
     
-    // create a simple artificial scenario
+    //! Partial DamBreak scenario
     SWE_PartialDambreak l_scenario;
 
     //! size of a single cell in x- and y-direction
@@ -50,6 +49,7 @@ int main( int argc, char** argv ) {
     l_dX = (l_scenario.getBoundaryPos(BND_RIGHT) - l_scenario.getBoundaryPos(BND_LEFT) )/l_nX;
     l_dY = (l_scenario.getBoundaryPos(BND_TOP) - l_scenario.getBoundaryPos(BND_BOTTOM) )/l_nY;
     
+    //! Dimensional Splitting Block
     SWE_DimensionalSplitting l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
     
     //! origin of the simulation domain in x- and y-direction
@@ -129,11 +129,6 @@ int main( int argc, char** argv ) {
             
             // reset the cpu clock
             tools::Logger::logger.resetCpuClockToCurrentTime();
-            
-            // approximate the maximum time step
-            // TODO: This calculation should be replaced by the usage of the wave speeds occuring during the flux computation
-            // Remark: The code is executed on the CPU, therefore a "valid result" depends on the CPU-GPU-synchronization.
-  //        _wavePropgationBlock.computeMaxTimestep();
             
             // compute numerical flux on each edge
             l_dimensionalSplitting.computeNumericalFluxes();

@@ -19,7 +19,6 @@ SWE_DimensionalSplitting::SWE_DimensionalSplitting(int l_nx, int l_ny,
     hNetUpdatesAbove (nx, ny+1),
     hvNetUpdatesBelow(nx, ny+1),
     hvNetUpdatesAbove(nx, ny+1),
-
     hStar(nx, ny+2)
 {
 }

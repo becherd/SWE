@@ -27,7 +27,15 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
 {
     float maxWaveSpeed, maxEdgeSpeed = 0.f;
     
-    // X-sweep
+    /**
+     * **X-Sweep**
+     *
+     * Iterate through every row (including ghost-only rows) and compute 
+     * the left and right net updates for each edge. NetUpdatesLeft[i][j]
+     * denotes the left-going update from cell i+1 to cell i in row j,
+     * while NetUpdatesRight[i][j] denotes the right-going update from cell i
+     * to cell i+1 in row j
+     */
     for(int j = 0; j < ny+2; j++) {
         for(int i = 0; i < nx+1; i++) {
             dimensionalSplittingSolver.computeNetUpdates( h[i][j], h[i+1][j],
@@ -49,7 +57,16 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
     
     assert(std::isfinite(maxTimestep));
     
-    // Update Q* (h*)
+    /**
+     * **Update intermediate heights (hStar)**
+     *
+     * Compute the intermediate heights resulting from the X-Sweep using
+     * the left- and right-going net updates. Note that hStar does not include
+     * the ghost cells at the left and right boundary of the block. Therefore
+     * the cell hStar[i][j] corresponds to h[i+1][j] since indexing begins with 0
+     * in hStar, similarly hStar contains two cells less than h in horizontal (x)
+     * direction 
+     */
     for (int j = 0; j < ny+2; j++) {
         for (int i = 0; i < nx; i++) {
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
@@ -60,7 +77,15 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
         }
     }
     
-    // Y-sweep
+    /**
+     * **Y-Sweep**
+     *
+     * Iterate through every column of hStar (therefore excluding the left and right
+     * ghost columns) and compute all the vertical (above- and below-going) net
+     * updates. NetUpdatesBelow[i][j] denotes the updates going from cell j+1 to cell j
+     * in the (i+1)-th column , while NetUpdatesAbove[i][j] denotes the updates going from cell 
+     * j to j+1 in the (i+1)-th column of the block
+     */
     for(int i = 0; i < nx; i++) {
         for(int j = 0; j < ny+1; j++) {
             dimensionalSplittingSolver.computeNetUpdates( hStar[i][j], hStar[i][j+1],
@@ -93,6 +118,11 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
 
 void SWE_DimensionalSplitting::updateUnknowns(float dt)
 {
+    /**
+     * Iterate through every cell inside the block (excluding ghost cells)
+     * and compute the resulting height, horizontal and vertical momentum
+     * using the left, right, above and below net updates
+     */
     for (int i = 0; i < nx; i++) {
         for (int j = 0; j < ny; j++) {
             // Update heights

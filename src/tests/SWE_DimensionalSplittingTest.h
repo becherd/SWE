@@ -86,7 +86,7 @@ public:
     };
 };
 
-/* Timecodes (for each row in the following static "check" member variable) */
+//! Timecodes (for each row in the following static "check" member variable) 
 const float DamBreak1DTestScenario::checkTimecodes[50] = {
     0.04038550,
     0.08004770,
@@ -141,9 +141,7 @@ const float DamBreak1DTestScenario::checkTimecodes[50] = {
 };
 
 
-/**
- * These values have been pre-computed in SWE1D using the equivalent scenario of DamBreak1DTestScenario
- */
+//! These values have been pre-computed in SWE1D using the equivalent scenario of DamBreak1DTestScenario
 const float DamBreak1DTestScenario::check[50][50] = {
     {10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9.13397, 5.86603, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5},
     {10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9.69263, 8.59861, 6.4238, 5.28496, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5},
@@ -198,7 +196,7 @@ const float DamBreak1DTestScenario::check[50][50] = {
 };
 
 /**
- * Unit test to check dimensional splitting against a 1D solution by simulating a 1D
+ * Unit test to check SWE_DimensionalSplitting against a 1D solution by simulating a 1D
  * scenario in two dimensions
  */
 class SWE_DimensionalSplittingTest : public CxxTest::TestSuite {
@@ -314,11 +312,11 @@ class SWE_DimensionalSplittingTest : public CxxTest::TestSuite {
             }
         }
     public:
-        /** Simulate the 1D DamBreak in Y direction */
+        /// Simulate the 1D DamBreak in Y direction
         void testDamBreakY() {
             testDamBreak(DamBreak1DTestScenario::DIR_Y);
         }
-        /** Simulate the 1D DamBreak in X direction */
+        /// Simulate the 1D DamBreak in X direction
         void testDamBreakX() {
             testDamBreak(DamBreak1DTestScenario::DIR_X);
         }

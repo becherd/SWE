@@ -24,13 +24,13 @@ class SWE_PartialDambreak : public SWE_Scenario {
 		return -10.0f;
     };
 
-	 /**
+	/**
      * @return Initial water height at pos
      */
     float getWaterHeight(float x, float y) { 
 		if (x < 97.5f)
             return 10.0f;
-        return 5.0f;
+        return 7.0f;
     };
 	
 	/**

@@ -2,6 +2,7 @@
 
 #include "blocks/SWE_DimensionalSplitting.hh"
 #include "scenarios/SWE_PartialDambreak.hh"
+#include "scenarios/SWE_TsunamiScenario.hh"
 
 #ifdef WRITENETCDF
 #include "writer/NetCdfWriter.hh"
@@ -40,7 +41,7 @@ int main( int argc, char** argv ) {
         l_numberOfCheckPoints = atoi(argv[4]);
     
     //! Partial DamBreak scenario
-    SWE_PartialDambreak l_scenario;
+    SWE_TsunamiScenario l_scenario;
 
     //! size of a single cell in x- and y-direction
     float l_dX, l_dY;

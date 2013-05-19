@@ -36,10 +36,13 @@ private:
 	 */
 	void loadInputFiles(float x, float y){
 
-	/**
-	 * Load the bathymetry file
-	 */
-
+#ifndef WRITENETCDF
+        std::cerr << "NetCDF support must be enabled (writeNetCDF=yes) in order to read bathymetry data" << std::endl;
+        abort();
+#else
+       	/**
+       	 * Load the bathymetry file
+       	 */
 		int 
 			/* The bathymetry file ID */
 			bathymetry_file_id,
@@ -134,6 +137,7 @@ private:
 			displacement_xy = displacement_in[int(x)-tx][int(y) -ty];
 		}
 		else displacement_xy = 0;
+#endif;
 }
 
 public:

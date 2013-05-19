@@ -9,7 +9,6 @@
 #include <iostream>
 #include <netcdf.h>
 #include <stdio.h>
-//#include <stdlib.h>
 
 #define BATHYMETRY_FILE "artificialtsunami_bathymetry_1000.nc"
 #define DISPLACEMENT_FILE "artificialtsunami_displ_1000.nc"
@@ -22,18 +21,25 @@ using namespace std;
  */
 class SWE_TsunamiScenario : public SWE_Scenario {
 
-  public:
 
-    /**
-     * @return bathymetry at pos
-     */
-    float getBathymetry(float x, float y) {
 
-		/**
-		 *
-		 * Load the bathymetry file
-		 *
-		 */
+private:
+
+	float bathymetry_xy;
+	float displacement_xy;
+	
+
+	/**
+	 *
+	 * Load both the bathymetry and displacement file
+	 *
+	 */
+	void loadInputFiles(float x, float y){
+
+	/**
+	 * Load the bathymetry file
+	 */
+
 		int 
 			/* The bathymetry file ID */
 			bathymetry_file_id,
@@ -43,19 +49,14 @@ class SWE_TsunamiScenario : public SWE_Scenario {
 			bathymetry_dimx_id,
 			/* The dimension y ID */
 			bathymetry_dimy_id;
-
-		size_t
-			/* The size in x-dimension */
+		size_t 
 			bathymetry_len_x,
-			/* The size in y-dimension */
-			bathymetry_len_y;
+			bathymetry_len_y; 
 
-		/* We can store the return values of the netCDF methods here */
+		// We can store the return values of the netCDF methods here
 		int retval;
 
-	   /**
-		* Open the file
-		*/
+		// Open the file
   		retval = nc_open(BATHYMETRY_FILE, NC_NOWRITE, &bathymetry_file_id);
 
  	  	retval = nc_inq_varid(bathymetry_file_id, "z", &bathymetry_z_id);
@@ -66,22 +67,23 @@ class SWE_TsunamiScenario : public SWE_Scenario {
 		retval= nc_inq_dimlen(bathymetry_file_id, bathymetry_dimx_id, &bathymetry_len_x);
 		retval= nc_inq_dimlen(bathymetry_file_id, bathymetry_dimy_id, &bathymetry_len_y);
 
-	   /**
-		* Array in which we will store the bathymetry data from the input file
-		*/
+		// Array in which we will store the bathymetry data from the input file
 		float bathymetry_in[bathymetry_len_x][bathymetry_len_y];
 
-		/* Read the bathymetry data and store it into bathymetry_in */
+		// Read the bathymetry data and store it into bathymetry_in
 		retval = nc_get_var_float(bathymetry_file_id, bathymetry_z_id, &bathymetry_in[0][0]);
 
+		//make sure we stay into array bounds
+		if ((int) x > 1000) x=1000; 
+		if ((int) x < 0) x=0;  
+		if ((int) y > 1000) y=1000; 
+		if ((int) y < 0) y=0;  
 
+		bathymetry_xy = bathymetry_in[(int) x][(int) y];
 
 		/**
-		 *
 		 * Load the displacement file
-		 *
 		 */
-
 
 		int 
 			/* The displacement file ID */
@@ -99,10 +101,7 @@ class SWE_TsunamiScenario : public SWE_Scenario {
 			/* The size in y-dimension */
 			displacement_len_y;
 
-
-	   /**
-		* Open the file
-		*/
+		// Open the file
   		retval = nc_open(DISPLACEMENT_FILE, NC_NOWRITE, &displacement_file_id);
 
  	  	retval = nc_inq_varid(displacement_file_id, "z", &displacement_z_id);
@@ -113,19 +112,15 @@ class SWE_TsunamiScenario : public SWE_Scenario {
 		retval= nc_inq_dimlen(displacement_file_id, displacement_dimx_id, &displacement_len_x);
 		retval= nc_inq_dimlen(displacement_file_id, displacement_dimy_id, &displacement_len_y);
 
-	   /**
-		* Array in which we will store the displacement data from the input file
-		*/
+		//The dimensions of the displacement file cannot be bigger than the dimensions of the bathymetry file
+		assert(displacement_len_x <= bathymetry_len_x);
+		assert(displacement_len_y <= bathymetry_len_y);
+
+		// Array in which we will store the displacement data from the input file
 		float displacement_in[displacement_len_x][displacement_len_y];
 
-		/* Read the displacement data and store it into displacement_in */
+		// Read the displacement data and store it into displacement_in
 		retval = nc_get_var_float(displacement_file_id, displacement_z_id, &displacement_in[0][0]);
-
-
-
-	   /**
-		*  Use the bathymetry and displacement data
-		*/
 
 		/**
 		 * Since we have two different coordinate systems, we have to shift the indices from the displacement coordinate system to 	
@@ -135,13 +130,22 @@ class SWE_TsunamiScenario : public SWE_Scenario {
 		int tx= (int) (bathymetry_len_x - displacement_len_x)*0.5f;
 		int ty= (int) (bathymetry_len_y - displacement_len_y)*0.5f;
 
-		float bathymetry_xy = bathymetry_in[(int) x][(int) y];
-		
-		//add displacement to bathymetry
 		if (x >= tx && x <= (bathymetry_len_x - tx) && y >= ty && y <= (bathymetry_len_y - ty)){
-			float displacement_xy = displacement_in[int(x)-tx][int(y) -ty];
-			bathymetry_xy= bathymetry_xy + displacement_xy;
+			displacement_xy = displacement_in[int(x)-tx][int(y) -ty];
 		}
+		else displacement_xy = 0;
+}
+
+public:
+
+    /**
+     * @return bathymetry at pos
+     */
+    float getBathymetry(float x, float y) {
+
+		loadInputFiles(x, y);
+
+		bathymetry_xy=bathymetry_xy+displacement_xy;
 
 		// Test if the bathymetry value is between -20 metres and 20 metres
 		if (bathymetry_xy >= -20.0f && bathymetry_xy < 0.0f)
@@ -149,14 +153,14 @@ class SWE_TsunamiScenario : public SWE_Scenario {
 		else if (bathymetry_xy <= 20.0f && bathymetry_xy >= 0.0f)
 			return 20.0f;
 		else return bathymetry_xy;
-   
     };
 
 	 /**
      * @return Initial water height at pos
      */
     float getWaterHeight(float x, float y) { 
-		return -getBathymetry(x, y);
+		loadInputFiles(x, y);
+		return -bathymetry_xy;
     };
 	
 	/**
@@ -173,9 +177,7 @@ class SWE_TsunamiScenario : public SWE_Scenario {
     * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
     */
 	BoundaryType getBoundaryType(BoundaryEdge edge) {
-		if (edge == BND_RIGHT)
 			return OUTFLOW;
-		return WALL;
 	};
     
     /** Get the boundary positions
@@ -187,11 +189,11 @@ class SWE_TsunamiScenario : public SWE_Scenario {
        if ( i_edge == BND_LEFT )
          return 0.0f;
        else if ( i_edge == BND_RIGHT)
-         return 500.0f;
+         return 1000.0f;
        else if ( i_edge == BND_BOTTOM )
          return 0.0f;
        else
-         return 500.0f; 
+         return 1000.0f; 
     };
 };
 

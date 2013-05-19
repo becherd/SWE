@@ -9,6 +9,10 @@
 class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
 
   private:
+
+	/**
+     * @return displacement at pos
+     */
 	float getDisplacement(float x, float y){
 		x=x-5000.0f;
 		y=y-5000.0f;
@@ -17,6 +21,9 @@ class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
 		return 0;
 	}
 
+	/**
+     * @return bathymetry before earthquake at pos
+     */
 	float getBathymetrybeforeEarthquake(float x, float y) {
 		return -100.0f;
     };
@@ -51,9 +58,7 @@ class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
     * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
     */
 	BoundaryType getBoundaryType(BoundaryEdge edge) {
-		if (edge == BND_RIGHT)
 			return OUTFLOW;
-		return WALL;
 	};
     
     /** Get the boundary positions

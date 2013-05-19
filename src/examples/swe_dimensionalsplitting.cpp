@@ -214,8 +214,7 @@ int main( int argc, char** argv ) {
     // Create scenario according to chosen options
     switch(l_scenarioName) {
         case SCENARIO_TSUNAMI:
-            // TODO: Pass bathymetry and displacement file names to scenario
-            l_scenario = new SWE_TsunamiScenario();
+            l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName);
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
             // TODO: Implement checkpointed tsunami

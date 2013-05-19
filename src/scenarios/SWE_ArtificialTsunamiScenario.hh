@@ -6,6 +6,9 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+/**
+ * Scenario "Artificial Tsunami"
+ */
 class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
 
   private:
@@ -13,18 +16,20 @@ class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
 	/**
      * @return displacement at pos
      */
-	float getDisplacement(float x, float y){
-		x=x-5000.0f;
-		y=y-5000.0f;
-		if (x >= -500.0f && x <= 500.0f && y >= -500.0f && y <= 500.0f)
-			return 5.0f*sin(((x/500.0f)+1.0f)*M_PI)*((-1)*(y/500.0f)*(y/500.0f)+1.0f);
-		return 0;
+	float getDisplacement(float x, float y) {
+        if(std::fabs(x) > 500.0 || std::fabs(y) > 500.0)
+            return 0.0;
+        
+        double dx = sin( (x / 500.0 + 1.0) * M_PI);
+        double dy = 1.0 - (y*y)/(500.0*500.0);
+        
+        return 5.0 * dx * dy;
 	}
 
 	/**
      * @return bathymetry before earthquake at pos
      */
-	float getBathymetrybeforeEarthquake(float x, float y) {
+	float getInitialBathymetry(float x, float y) {
 		return -100.0f;
     };
 
@@ -34,14 +39,14 @@ class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
      * @return bathymetry at pos
      */
     float getBathymetry(float x, float y) {
-		return getBathymetrybeforeEarthquake(x,y) + getDisplacement(x,y);
+		return getInitialBathymetry(x,y) + getDisplacement(x,y);
     };
 
 	 /**
      * @return Initial water height at pos
      */
     float getWaterHeight(float x, float y) { 
-        return -getBathymetrybeforeEarthquake(x, y);
+        return -getInitialBathymetry(x, y);
     };
 	
 	/**
@@ -68,13 +73,13 @@ class SWE_ArtificialTsunamiScenario : public SWE_Scenario {
      */
     float getBoundaryPos(BoundaryEdge i_edge) {
        if ( i_edge == BND_LEFT )
-         return 0.0f;
+         return -5000.0f;
        else if ( i_edge == BND_RIGHT)
-         return 10000.0f;
+         return 5000.0f;
        else if ( i_edge == BND_BOTTOM )
-         return 0.0f;
+         return -5000.0f;
        else
-         return 10000.0f; 
+         return 5000.0f; 
     };
 };
 

@@ -155,6 +155,12 @@ public:
         loadInputFiles(bathymetryFileName, displacementFileName);
     }
     
+    ~SWE_TsunamiScenario() {
+        // Close open NetCDF handles
+        nc_close(bathymetry_file_id);
+        nc_close(displacement_file_id);
+    }
+    
     /**
      * @return bathymetry at pos
      */

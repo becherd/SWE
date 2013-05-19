@@ -229,8 +229,6 @@ class SWE_DimensionalSplittingTest : public CxxTest::TestSuite {
             
             // passed simulation time
             float t = 0.0;
-            // index for timestep comparisons
-            unsigned int index = 0;
             
             for(unsigned int step = 0; step < TIMESTEPS; step++) {
                 

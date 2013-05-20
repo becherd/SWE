@@ -19,6 +19,8 @@
 class SWE_TsunamiScenario : public SWE_Scenario {
 
 protected:
+    //! numerical tolerance used in certain comparisons
+    const static float tolerance = 1e-10;
     
     //! The NetCDF bathymetry file ID
     int bathymetry_file_id;
@@ -127,6 +129,9 @@ protected:
         bathymetry_x_step = (bathymetry_x_max - bathymetry_x_min) / (bathymetry_x_len - 1);
         bathymetry_y_step = (bathymetry_y_max - bathymetry_y_min) / (bathymetry_y_len - 1);
         
+        // Step size should be greater than zero
+        assert(bathymetry_x_step > 0.0); assert(bathymetry_y_step > 0.0);
+        
         /**
          * Load the displacement file
          */
@@ -171,6 +176,9 @@ protected:
         // Note: We assume the step width remains constaint over the complete domain
         displacement_x_step = (displacement_x_max - displacement_x_min) / (displacement_x_len - 1);
         displacement_y_step = (displacement_y_max - displacement_y_min) / (displacement_y_len - 1);
+        
+        // Step size should be greater than zero
+        assert(displacement_x_step > 0.0); assert(displacement_y_step > 0.0);
     }
     
     void handleNetCDFError(int status) {
@@ -179,17 +187,37 @@ protected:
     }
     
     float getInitialBathymetry(float x, float y) {
-        // We're inside displacement data domain
         // Find the nearest cell in the bathymetry data
-        size_t xIndex = static_cast <size_t> (std::floor((x - getBoundaryPos(BND_LEFT)) / bathymetry_x_step));
-        size_t yIndex = static_cast <size_t> (std::floor((y - getBoundaryPos(BND_BOTTOM)) / bathymetry_y_step));
+        size_t xIndex, yIndex;
         
-        // Check index bounds
-        assert(xIndex >= 0); assert(xIndex < bathymetry_x_len);
-        assert(yIndex >= 0); assert(yIndex < bathymetry_y_len);
+        // relative position in the domain
+        float relPosX = x - getBoundaryPos(BND_LEFT);
+        float relPosY = y - getBoundaryPos(BND_BOTTOM);
         
+        if(relPosX >= tolerance) {
+            xIndex = static_cast <size_t> (std::floor(relPosX / bathymetry_x_step));
+            
+            // make sure the index stays inside variable index bounds
+            if(xIndex >= bathymetry_x_len)
+                xIndex = bathymetry_x_len-1;
+        } else {
+            // requested coordninate is below our lower domain bound
+            xIndex = 0;
+        }
+        
+        if(relPosY >= tolerance) {
+            yIndex = static_cast <size_t> (std::floor(relPosY / bathymetry_y_step));
+            
+            // make sure the index stays inside variable index bounds
+            if(yIndex >= bathymetry_y_len)
+                yIndex = bathymetry_y_len-1;
+        } else {
+            // requested coordninate is below our lower domain bound
+            yIndex = 0;
+        }
+                
         // Index array for reading values from NetCDF
-        size_t index[] = {xIndex, yIndex};
+        size_t index[] = {yIndex, xIndex};
         
         float initialBathymetry;
         int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &initialBathymetry);
@@ -204,7 +232,7 @@ protected:
         float borderYMax = displacement_y_max + (displacement_y_step / 2);
         
         // Check if we're outside the displacement data domain
-        if(x >= borderXMax || x < borderXMin || y >= borderYMax || y < borderYMin)
+        if(x >= borderXMax || x <= borderXMin || y >= borderYMax || y <= borderYMin)
             return 0.0;
         
         // We're inside displacement data domain
@@ -217,7 +245,7 @@ protected:
         assert(yIndex >= 0); assert(yIndex < displacement_y_len);
         
         // Index array for reading values from NetCDF
-        size_t index[] = {xIndex, yIndex};
+        size_t index[] = {yIndex, xIndex};
         
         float displacement;
         int status = nc_get_var1_float(displacement_file_id, displacement_z_id, (const size_t *)index, &displacement);
@@ -226,7 +254,7 @@ protected:
     }
 
 public:
-    
+
     SWE_TsunamiScenario(std::string bathymetryFileName, std::string displacementFileName) {
         loadInputFiles(bathymetryFileName, displacementFileName);
     }
@@ -255,7 +283,10 @@ public:
      * @return Initial water height at pos
      */
     float getWaterHeight(float x, float y) { 
-        return -getInitialBathymetry(x,y);
+        float height = -getInitialBathymetry(x,y);
+        if(height >= 0.0)
+            return height;
+        return 0.0;
     };
     
     /**

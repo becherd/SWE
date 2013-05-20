@@ -110,6 +110,16 @@ env.CxxTest([
     env.Object('blocks/SWE_Block.cpp')
 ])
 
+if env['writeNetCDF'] == True:
+  env.CxxTest(['tests/SWE_TsunamiScenarioTest.h'],
+    CPPDEFINES=[
+      ('BATHYMETRY_FILE', '\\"' + File('#src/tests/test_bathymetry.nc').srcnode().abspath + '\\"'),
+      ('DISPLACEMENT_FILE', '\\"' + File('#src/tests/test_displacement.nc').srcnode().abspath + '\\"'),
+    ]
+  )
+else:
+  print >> sys.stderr, 'WARNING: TsunamiScenarioTest cannot be run because NetCDF support is missing'
+    
 # CPU compilation for sure
 for i in sourceFiles:
   env.src_files.append(env.Object(i))

@@ -19,9 +19,6 @@
 class SWE_TsunamiScenario : public SWE_Scenario {
 
 protected:
-
-    float bathymetry_xy;
-    float displacement_xy;
     
     //! The NetCDF bathymetry file ID
     int bathymetry_file_id;
@@ -165,14 +162,14 @@ public:
      * @return bathymetry at pos
      */
     float getBathymetry(float x, float y) {
-        bathymetry_xy = getInitialBathymetry(x,y) + getDisplacement(x,y);
+        float bathymetry = getInitialBathymetry(x,y) + getDisplacement(x,y);
 
         // Test if the bathymetry value is between -20 metres and 20 metres
-        if (bathymetry_xy >= -20.0f && bathymetry_xy < 0.0f)
-            return -20.0f;
-        else if (bathymetry_xy <= 20.0f && bathymetry_xy >= 0.0f)
-            return 20.0f;
-        else return bathymetry_xy;
+        if (bathymetry >= -20.0 && bathymetry < 0.0)
+            return -20.0;
+        else if (bathymetry <= 20.0 && bathymetry >= 0.0)
+            return 20.0;
+        return bathymetry;
     };
 
      /**

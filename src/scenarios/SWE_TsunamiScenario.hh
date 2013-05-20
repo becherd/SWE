@@ -22,6 +22,9 @@ protected:
     //! numerical tolerance used in certain comparisons
     const static float tolerance = 1e-10;
     
+    //! Boundary types for each boundary (left, right, bottom, top)
+    BoundaryType boundaryTypes[4];
+    
     //! The NetCDF bathymetry file ID
     int bathymetry_file_id;
     //! The NetCDF bathymetry z(x,y) ID
@@ -255,8 +258,19 @@ protected:
 
 public:
 
-    SWE_TsunamiScenario(std::string bathymetryFileName, std::string displacementFileName) {
+    SWE_TsunamiScenario(std::string bathymetryFileName, std::string displacementFileName)
+    : SWE_Scenario() {
         loadInputFiles(bathymetryFileName, displacementFileName);
+        
+        for(int i = 0; i < 4; i++)
+            boundaryTypes[i] = OUTFLOW;
+    }
+    
+    SWE_TsunamiScenario(std::string bathymetryFileName, std::string displacementFileName, BoundaryType* _boundaryTypes) : SWE_Scenario() {
+            loadInputFiles(bathymetryFileName, displacementFileName);
+            
+            for(int i = 0; i < 4; i++)
+                boundaryTypes[i] = _boundaryTypes[i];
     }
     
     ~SWE_TsunamiScenario() {
@@ -305,7 +319,7 @@ public:
     * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
     */
     BoundaryType getBoundaryType(BoundaryEdge edge) {
-        return OUTFLOW;
+        return boundaryTypes[edge];
     };
     
     /** Get the boundary positions

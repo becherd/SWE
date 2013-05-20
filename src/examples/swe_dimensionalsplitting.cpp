@@ -214,7 +214,13 @@ int main( int argc, char** argv ) {
     // Create scenario according to chosen options
     switch(l_scenarioName) {
         case SCENARIO_TSUNAMI:
-            l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName);
+            // overwrite boundary conditions from scenario in case they have 
+            // been explicitly set using command line arguments
+            if(!l_overwriteBoundaryConditions) {
+                l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName);
+            } else {
+                l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName, l_boundaryConditions);
+            }
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
             // TODO: Implement checkpointed tsunami
@@ -222,14 +228,24 @@ int main( int argc, char** argv ) {
             abort();
             break;
         case SCENARIO_ARTIFICIAL_TSUNAMI:
-            l_scenario = new SWE_ArtificialTsunamiScenario();
+            // overwrite boundary conditions from scenario in case they have 
+            // been explicitly set using command line arguments
+            if(!l_overwriteBoundaryConditions) {
+                l_scenario = new SWE_ArtificialTsunamiScenario();
+            } else {
+                l_scenario = new SWE_ArtificialTsunamiScenario(l_boundaryConditions);
+            }
             break;
         case SCENARIO_PARTIAL_DAMBREAK:
             l_scenario = new SWE_PartialDambreak();
+            if(l_overwriteBoundaryConditions) {
+                std::cerr << "WARNING: PartialDambreak-Scenario does not support "
+                          << "explicitly setting boundary conditions" << std::endl;
+            }
             break;
         default:
             std::cerr << "Invalid Scenario" << std::endl;
-            abort();
+            exit(1);
             break;
     }
 
@@ -252,12 +268,6 @@ int main( int argc, char** argv ) {
 
     // initialize the wave propagation block
     l_dimensionalSplitting.initScenario(l_originX, l_originY, *l_scenario);
-    
-    // overwrite boundary conditions from scenario in case they have 
-    // been explicitly set using command line arguments
-    if(l_overwriteBoundaryConditions) {
-        // TODO: overwrite boundary conditions of scenario
-    }
     
     //! time when the simulation ends.
     float l_endSimulation;

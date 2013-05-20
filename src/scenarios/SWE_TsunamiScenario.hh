@@ -272,18 +272,20 @@ public:
         float bathymetry = getInitialBathymetry(x,y) + getDisplacement(x,y);
 
         // Test if the bathymetry value is between -20 metres and 20 metres
-        if (bathymetry >= -20.0 && bathymetry < 0.0)
-            return -20.0;
-        else if (bathymetry <= 20.0 && bathymetry >= 0.0)
+        if(std::fabs(bathymetry) >= 20.0)
+            return bathymetry;
+        else if(bathymetry >= 0.0)
             return 20.0;
-        return bathymetry;
+        return -20.0;
     };
 
      /**
      * @return Initial water height at pos
      */
-    float getWaterHeight(float x, float y) { 
-        float height = -getInitialBathymetry(x,y);
+    float getWaterHeight(float x, float y) {
+        // bathymetry is rounded to avoid bathymetry around zero
+        // therefore, we get the rounded bathymetry and subtract the displacement
+        float height = -(getBathymetry(x,y) - getDisplacement(x,y));
         if(height >= 0.0)
             return height;
         return 0.0;

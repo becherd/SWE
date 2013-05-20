@@ -20,7 +20,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
         /// Set Up called before each test case (create scenario)
         void setUp() {
             // Create scenario
-            // Note: *_FILE env variables must be passed when running the tests
+            // Note: {BATHYMETRY,DISPLACEMENT}_FILE env variables must be passed when running the tests
             scenario = new SWE_TsunamiScenario(std::string(BATHYMETRY_FILE), std::string(DISPLACEMENT_FILE));
         }
         
@@ -119,5 +119,57 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
             TSM_ASSERT_EQUALS("Lower Y-Boundary Position", scenario->getInitialBathymetry(2.0, -1250.0), -6.125);
             TSM_ASSERT_EQUALS("Upper Y-Boundary Position", scenario->getInitialBathymetry(24.0, 1250.0), 30.625);
         }
-
+        
+        /// Test correctnes of displacement data reading from file
+        void testGetDisplacement() {
+            
+            // x-Position is outside displacement domain (should give a zero displacement)
+            TSM_ASSERT_EQUALS("x-Pos Outside Displacement (lower)", scenario->getDisplacement(-500.0, 25.0), 0.0);
+            TSM_ASSERT_EQUALS("x-Pos Outside Displacement (upper)", scenario->getDisplacement(1500.0, 25.0), 0.0);
+            
+            // y-Position is outside displacement domain (should give a zero displacement)
+            TSM_ASSERT_EQUALS("y-Pos Outside Displacement (lower)", scenario->getDisplacement(105.0, -2000.0), 0.0);
+            TSM_ASSERT_EQUALS("y-Pos Outside Displacement (upper)", scenario->getDisplacement(205.0, 3000.0), 0.0);
+            
+            //
+            // From now on, both x- and y-Pos are inside the displacement domain
+            //
+            
+            // Request exact position is in the dataset
+            TSM_ASSERT_EQUALS("Exact Position", scenario->getDisplacement(175.0, 250.0), 212.5);
+            
+            // Exact position is NOT in dataset, but somewhere in a cell
+            TSM_ASSERT_EQUALS("Cell Position", scenario->getDisplacement(187.5, 175.0), 167.5);
+            
+            // Exact position is NOT in dataset, but in a edge in x-direction
+            // We're using a simple 'round up' approach for now
+            TSM_ASSERT_EQUALS("X-Edge Position", scenario->getDisplacement(200.0, 175.0), 177.5);
+            
+            // Exact position is NOT in dataset, but in a edge in y-direction
+            // We're using a simple 'round up' approach for now
+            TSM_ASSERT_EQUALS("Y-Edge Position", scenario->getDisplacement(302.5, 200.0), 277.5);
+            
+            // Exact position is NOT in dataset and it's on the boundary in x-direction
+            TSM_ASSERT_EQUALS("Lower X-Boundary Position", scenario->getDisplacement(150.0, -70.0), 0.0);
+            TSM_ASSERT_EQUALS("Upper X-Boundary Position", scenario->getDisplacement(350.0, -70.0), 0.0);
+            
+            // Exact position is NOT in dataset and it's on the boundary in x-direction
+            TSM_ASSERT_EQUALS("Lower Y-Boundary Position", scenario->getDisplacement(225.0, -500.0), 0.0);
+            TSM_ASSERT_EQUALS("Upper Y-Boundary Position", scenario->getDisplacement(325.0, 500.0), 0.0);
+        }
+        
+        /// Test bathymetry calculation based on read bathymetry and displacement data
+        void testGetBathymetry() {
+            TSM_ASSERT_EQUALS("Bathymetry > 20m", scenario->getBathymetry(155.0, 475.0), 376.125);
+            TSM_ASSERT_EQUALS("0m < Bathymetry <= 20m", scenario->getBathymetry(-155.0, -50.0), 20.0);
+            TSM_ASSERT_EQUALS("-20m <= Bathymetry < 0m", scenario->getBathymetry(-155.0, 50.0), -20.0);
+            TSM_ASSERT_EQUALS("Bathymetry < -20m", scenario->getBathymetry(155.0, -425.0), -213.375);            
+        }
+        
+        /// Test water height calculation based in read bathymetry data
+        void testGetWaterHeight() {
+            TSM_ASSERT_EQUALS("Wet Cell (Bathymetry < 20m)", scenario->getWaterHeight(-122.5, 105.0), 20.0);
+            TSM_ASSERT_EQUALS("Wet Cell (Bathymetry > 20m)", scenario->getWaterHeight(-122.5, 305.0), 40.625);
+            TSM_ASSERT_EQUALS("Dry Cell", scenario->getWaterHeight(92.5, 85.0), 0.0);
+        }
 };

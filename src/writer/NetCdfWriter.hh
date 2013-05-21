@@ -57,7 +57,7 @@ private:
     int dataFile;
 
     /** Variable ids */
-    int timeVar, hVar, huVar, hvVar, bVar;
+    int timeVar, hVar, huVar, hvVar, bVar, numberOfCheckPointsVar, endSimulationVar;
 
     /** Flush after every x write operation? */
     unsigned int flush;
@@ -81,11 +81,21 @@ private:
                  unsigned int i_flush = 0);
     virtual ~NetCdfWriter();
 
+
+
+	    // writes the unknowns at a given time step to the netCDF-file.
+    void writeTimeStep( const Float2D &i_h,
+                        const Float2D &i_hu,
+                        const Float2D &i_hv,
+						float i_time);
+
     // writes the unknowns at a given time step to the netCDF-file.
     void writeTimeStep( const Float2D &i_h,
                         const Float2D &i_hu,
                         const Float2D &i_hv,
-                        float i_time);
+						float i_time,
+						const int &i_numberOfCheckPoints, 
+						const float &i_endSimulation);
 
   private:
     /**

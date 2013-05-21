@@ -99,6 +99,9 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
 	nc_def_var(dataFile, "hv", NC_FLOAT, 3, dims, &hvVar);
 	nc_def_var(dataFile, "b",  NC_FLOAT, 2, &dims[1], &bVar);
 
+	nc_def_var(dataFile, "numberOfCheckPoints", NC_INT, 0, dims, &numberOfCheckPointsVar);
+	nc_def_var(dataFile, "endSimulation", NC_FLOAT, 0, dims, &endSimulationVar);
+
 	//set attributes to match CF-1.5 convention
 	ncPutAttText(NC_GLOBAL, "Conventions", "CF-1.5");
 	ncPutAttText(NC_GLOBAL, "title", "Computed tsunami solution");
@@ -199,12 +202,12 @@ void io::NetCdfWriter::writeVarTimeIndependent( const Float2D &i_matrix,
  */
 void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
                                       const Float2D &i_hu,
-                                      const Float2D &i_hv,
+                                      const Float2D &i_hv, 
                                       float i_time) {
 	if (timeStep == 0)
 		// Write bathymetry
 		writeVarTimeIndependent(b, bVar);
-
+		
 	//write i_time
 	nc_put_var1_float(dataFile, timeVar, &timeStep, &i_time);
 
@@ -217,9 +220,41 @@ void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
 	//write momentum in y-direction
 	writeVarTimeDependent(i_hv, hvVar);
 
+	//Write everything to the file
+	nc_sync(dataFile);
+
 	// Increment timeStep for next call
 	timeStep++;
 
 	if (flush > 0 && timeStep % flush == 0)
 		nc_sync(dataFile);
 }
+
+
+	/**
+	 * Writes the unknowns and additional Information for checkpointing to a netCDF-file.
+	 *
+ 	 * @param i_h water heights at a given time step.
+	 * @param i_hu momentums in x-direction at a given time step.
+ 	 * @param i_hv momentums in y-direction at a given time step.
+     * @param i_boundarySize size of the boundaries.
+ 	 * @param i_time simulation time of the time step.
+	 * @param i_numberOfCheckPoints
+	 * @param i_endSimulation Time when simulation ends
+	 */
+void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
+                                      const Float2D &i_hu,
+                                      const Float2D &i_hv, 
+                                      float i_time,
+									  const int &i_numberOfCheckPoints, 
+									  const float &i_endSimulation) {
+
+		//write the number of checkpoints
+		nc_put_var_int(dataFile, numberOfCheckPointsVar, &i_numberOfCheckPoints);
+
+		//write the length of the simulation
+		nc_put_var_float(dataFile, endSimulationVar, &i_endSimulation);
+
+		writeTimeStep(i_h, i_hu, i_hv, i_time);
+}
+

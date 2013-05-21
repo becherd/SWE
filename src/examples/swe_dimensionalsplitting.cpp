@@ -316,8 +316,10 @@ int main( int argc, char** argv ) {
     // Write zero time step
     l_writer.writeTimeStep( l_dimensionalSplitting.getWaterHeight(),
                                 l_dimensionalSplitting.getDischarge_hu(),
-                                l_dimensionalSplitting.getDischarge_hv(),
-                                (float) 0.);
+                                l_dimensionalSplitting.getDischarge_hv(), 
+                                (float) 0.,
+								l_numberOfCheckPoints,
+								l_endSimulation);
     
     /**
      * Simulation.

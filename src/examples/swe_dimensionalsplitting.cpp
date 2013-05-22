@@ -305,6 +305,8 @@ int main( int argc, char** argv ) {
   		l_nX, l_nY,
   		l_dX, l_dY,
   		l_originX, l_originY);
+        
+        l_writer.writeSimulationInfo(l_numberOfCheckPoints, l_endSimulation, l_boundaryConditions);
 #else
     // consturct a VtkWriter
     io::VtkWriter l_writer( l_outputFileName,
@@ -317,9 +319,7 @@ int main( int argc, char** argv ) {
     l_writer.writeTimeStep( l_dimensionalSplitting.getWaterHeight(),
                                 l_dimensionalSplitting.getDischarge_hu(),
                                 l_dimensionalSplitting.getDischarge_hv(), 
-                                (float) 0.,
-								l_numberOfCheckPoints,
-								l_endSimulation);
+                                (float) 0.);
     
     /**
      * Simulation.

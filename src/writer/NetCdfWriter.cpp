@@ -99,9 +99,6 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
 	nc_def_var(dataFile, "hv", NC_FLOAT, 3, dims, &hvVar);
 	nc_def_var(dataFile, "b",  NC_FLOAT, 2, &dims[1], &bVar);
 
-	nc_def_var(dataFile, "numberOfCheckPoints", NC_INT, 0, dims, &numberOfCheckPointsVar);
-	nc_def_var(dataFile, "endSimulation", NC_FLOAT, 0, dims, &endSimulationVar);
-
 	//set attributes to match CF-1.5 convention
 	ncPutAttText(NC_GLOBAL, "Conventions", "CF-1.5");
 	ncPutAttText(NC_GLOBAL, "title", "Computed tsunami solution");
@@ -230,31 +227,18 @@ void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
 		nc_sync(dataFile);
 }
 
-
-	/**
-	 * Writes the unknowns and additional Information for checkpointing to a netCDF-file.
-	 *
- 	 * @param i_h water heights at a given time step.
-	 * @param i_hu momentums in x-direction at a given time step.
- 	 * @param i_hv momentums in y-direction at a given time step.
-     * @param i_boundarySize size of the boundaries.
- 	 * @param i_time simulation time of the time step.
-	 * @param i_numberOfCheckPoints
-	 * @param i_endSimulation Time when simulation ends
-	 */
-void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
-                                      const Float2D &i_hu,
-                                      const Float2D &i_hv, 
-                                      float i_time,
-									  const int &i_numberOfCheckPoints, 
-									  const float &i_endSimulation) {
-
-		//write the number of checkpoints
-		nc_put_var_int(dataFile, numberOfCheckPointsVar, &i_numberOfCheckPoints);
-
-		//write the length of the simulation
-		nc_put_var_float(dataFile, endSimulationVar, &i_endSimulation);
-
-		writeTimeStep(i_h, i_hu, i_hv, i_time);
+/**
+ * Writes meta data about the simulation into the netCDF-file in order to be able to restart the simulation
+ * using only the checkpoint file
+ *
+ * @param i_numberOfCheckpoints The total number of checkpoints to be written
+ * @param i_simulatedTime The total time to be simulated
+ * @param i_boundaryTypes The type of left, right, bottom top boundary (e.g. OUTFLOW or WALL)
+ */
+void io::NetCdfWriter::writeSimulationInfo( int i_numberOfCheckpoints,
+                                            float i_simulatedTime,
+                                            BoundaryType* i_boundaryTypes) {
+    nc_put_att_int(dataFile, NC_GLOBAL, "numberOfCheckpoints", NC_INT, 1, &i_numberOfCheckpoints);
+    nc_put_att_float(dataFile, NC_GLOBAL, "simulatedTime", NC_FLOAT, 1, &i_simulatedTime);
+    // TODO: Write boundary types to file
 }
-

@@ -107,24 +107,6 @@ public:
             const Float2D &i_hu,
             const Float2D &i_hv,
             float i_time) = 0;
-
-	/**
-	 * Writes one time step
-	 *
-	 * @param i_h water heights at a given time step.
-	 * @param i_hu momentums in x-direction at a given time step.
-	 * @param i_hv momentums in y-direction at a given time step.
-	 * @param i_time simulation time of the time step.
-	 * @param i_numberOfCheckPoints
-	 * @param i_endSimulation Time when simulation ends
-	 */
-	virtual void writeTimeStep(
-			const Float2D &i_h,
-            const Float2D &i_hu,
-            const Float2D &i_hv,
-            float i_time,
-			const int &i_numberOfCheckPoints,
-			const float &i_endSimulation) = 0;
 };
 
 #endif // WRITER_HH_

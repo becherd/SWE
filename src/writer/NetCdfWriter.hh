@@ -46,6 +46,7 @@
 #endif
 
 #include "writer/Writer.hh"
+#include "scenarios/SWE_Scenario.hh"
 
 namespace io {
   class NetCdfWriter;
@@ -57,7 +58,7 @@ private:
     int dataFile;
 
     /** Variable ids */
-    int timeVar, hVar, huVar, hvVar, bVar, numberOfCheckPointsVar, endSimulationVar;
+    int timeVar, hVar, huVar, hvVar, bVar;
 
     /** Flush after every x write operation? */
     unsigned int flush;
@@ -81,22 +82,16 @@ private:
                  unsigned int i_flush = 0);
     virtual ~NetCdfWriter();
 
-
-
-	    // writes the unknowns at a given time step to the netCDF-file.
+	// writes the unknowns at a given time step to the netCDF-file.
     void writeTimeStep( const Float2D &i_h,
                         const Float2D &i_hu,
                         const Float2D &i_hv,
 						float i_time);
-
-    // writes the unknowns at a given time step to the netCDF-file.
-    void writeTimeStep( const Float2D &i_h,
-                        const Float2D &i_hu,
-                        const Float2D &i_hv,
-						float i_time,
-						const int &i_numberOfCheckPoints, 
-						const float &i_endSimulation);
-
+    
+    // writes meta information needed to restart the simulation to the netCDF-File.
+    void writeSimulationInfo( int i_numberOfCheckpoints,
+                              float i_simulatedTime,
+                              BoundaryType* i_boundaryTypes);
   private:
     /**
      * This is a small wrapper for `nc_put_att_text` which automatically sets the length.

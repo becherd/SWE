@@ -71,7 +71,6 @@ private:
     void writeVarTimeIndependent( const Float2D &i_matrix,
                                   int i_ncVariable);
 
-
   public:
     NetCdfWriter(const std::string &i_fileName,
     			 const Float2D &i_b,
@@ -100,6 +99,11 @@ private:
     {
     	nc_put_att_text(dataFile, varid, name, strlen(value), value);
     }
+    
+    /**
+     * Encodes a BoundaryType and writes it to an attribute in the NetCDF-File
+     */
+    void ncPutBoundaryTypeAtt(int varid, const char *name, BoundaryType boundaryType);
 
 };
 

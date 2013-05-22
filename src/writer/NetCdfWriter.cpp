@@ -240,5 +240,43 @@ void io::NetCdfWriter::writeSimulationInfo( int i_numberOfCheckpoints,
                                             BoundaryType* i_boundaryTypes) {
     nc_put_att_int(dataFile, NC_GLOBAL, "numberOfCheckpoints", NC_INT, 1, &i_numberOfCheckpoints);
     nc_put_att_float(dataFile, NC_GLOBAL, "simulatedTime", NC_FLOAT, 1, &i_simulatedTime);
-    // TODO: Write boundary types to file
+    
+    ncPutBoundaryTypeAtt(NC_GLOBAL, "boundaryTypeLeft", i_boundaryTypes[BND_LEFT]);
+    ncPutBoundaryTypeAtt(NC_GLOBAL, "boundaryTypeRight", i_boundaryTypes[BND_RIGHT]);
+    ncPutBoundaryTypeAtt(NC_GLOBAL, "boundaryTypeBottom", i_boundaryTypes[BND_BOTTOM]);
+    ncPutBoundaryTypeAtt(NC_GLOBAL, "boundaryTypeTop", i_boundaryTypes[BND_TOP]);
+}
+
+/**
+ * Encodes a BoundaryType and writes it to an attribute in the NetCDF-File
+ * 
+ * @param varid The NetCDF variable ID
+ * @param name The attribute name
+ * @param boundaryType The type of the boundary
+ */
+void io::NetCdfWriter::ncPutBoundaryTypeAtt(int varid, const char *name, BoundaryType boundaryType) {
+    std::string boundaryTypeName;
+    switch(boundaryType) {
+        case WALL:
+            boundaryTypeName = std::string("wall");
+            break;
+        case OUTFLOW:
+            boundaryTypeName = std::string("outflow");
+            break;
+        case INFLOW:
+            boundaryTypeName = std::string("inflow");
+            break;
+        case PASSIVE:
+            boundaryTypeName = std::string("passive");
+            break;
+        case CONNECT:
+            boundaryTypeName = std::string("connect");
+            break;
+        default:
+            std::cerr << "WARNING: Unsupported BoundaryType in Checkpointing!" << std::endl;
+            assert(false);
+            return;
+            break;
+    }
+    ncPutAttText(varid, name, boundaryTypeName.c_str());
 }

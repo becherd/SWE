@@ -3,13 +3,14 @@
 
 #include "blocks/SWE_DimensionalSplitting.hh"
 #include "scenarios/SWE_Scenario.hh"
-#include "scenarios/SWE_TsunamiScenario.hh"
-#include "scenarios/SWE_CheckpointTsunamiScenario.hh"
 #include "scenarios/SWE_PartialDambreak.hh"
 #include "scenarios/SWE_ArtificialTsunamiScenario.hh"
 
 #ifdef WRITENETCDF
 #include "writer/NetCdfWriter.hh"
+
+#include "scenarios/SWE_TsunamiScenario.hh"
+#include "scenarios/SWE_CheckpointTsunamiScenario.hh"
 #else
 #include "writer/VtkWriter.hh"
 #endif
@@ -48,12 +49,17 @@ int main( int argc, char** argv ) {
     
     //! List of defined scenarios
     typedef enum {
-        SCENARIO_TSUNAMI, SCENARIO_CHECKPOINT_TSUNAMI, 
+        SCENARIO_TSUNAMI, SCENARIO_CHECKPOINT_TSUNAMI,
         SCENARIO_ARTIFICIAL_TSUNAMI, SCENARIO_PARTIAL_DAMBREAK
     } ScenarioName;
     
     //! the name of the chosen scenario
-    ScenarioName l_scenarioName = SCENARIO_TSUNAMI;
+    ScenarioName l_scenarioName;
+#ifdef WRITENETCDF
+    l_scenarioName = SCENARIO_TSUNAMI;
+#else
+    l_scenarioName = SCENARIO_PARTIAL_DAMBREAK;
+#endif
     
     //! number of checkpoints for visualization (at each checkpoint in time, an output file is written).
     int l_numberOfCheckPoints = 20;
@@ -88,6 +94,7 @@ int main( int argc, char** argv ) {
             case 'o':
                 l_baseName = std::string(optarg);
                 break;
+#ifdef WRITENETCDF
             case 'i':
                 l_bathymetryFileName = std::string(optarg);
                 break;
@@ -97,6 +104,7 @@ int main( int argc, char** argv ) {
             case 'c':
                 l_checkpointFileName = std::string(optarg);
                 break;
+#endif
             case 'n':
                 l_numberOfCheckPoints = atoi(optarg);
                 break;
@@ -179,6 +187,7 @@ int main( int argc, char** argv ) {
     }
     
     if(showUsage) {
+        // TODO: refactor usage message
         std::cout << "Usage: ./SWE_<compiler>_<build>_none_dimsplit [OPTIONS]" << std::endl;
         std::cout << "  Available Options:" << std::endl;
         std::cout << "  REQUIRED:" << std::endl;
@@ -214,6 +223,7 @@ int main( int argc, char** argv ) {
     
     // Create scenario according to chosen options
     switch(l_scenarioName) {
+#ifdef WRITENETCDF
         case SCENARIO_TSUNAMI:
             // overwrite boundary conditions from scenario in case they have 
             // been explicitly set using command line arguments
@@ -232,6 +242,7 @@ int main( int argc, char** argv ) {
             if(l_nX == 0 || l_nY == 0)
                 ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCells(l_nX, l_nY);
             break;
+#endif
         case SCENARIO_ARTIFICIAL_TSUNAMI:
             // overwrite boundary conditions from scenario in case they have 
             // been explicitly set using command line arguments

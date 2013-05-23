@@ -42,11 +42,6 @@ public:
             boundaryTypes[i] = OUTFLOW;
     }
     
-    SWE_ArtificialTsunamiScenario(BoundaryType* _boundaryTypes) : SWE_Scenario() {
-        for(int i = 0; i < 4; i++)
-            boundaryTypes[i] = _boundaryTypes[i];
-    }
-    
     /**
      * @return bathymetry at pos
      */
@@ -66,6 +61,16 @@ public:
      */
     float endSimulation() {
         return 50.0f;
+    };
+    
+    /**
+     * Override default boundary types
+     *
+     * @param _boundaryTypes An array holding the left, right, bottom, top boundary types
+     */
+    void setBoundaryTypes(BoundaryType* _boundaryTypes) {
+        for(int i = 0; i < 4; i++)
+            boundaryTypes[i] = _boundaryTypes[i];
     };
     
     /**

@@ -232,13 +232,12 @@ int main( int argc, char** argv ) {
     switch(l_scenarioName) {
 #ifdef WRITENETCDF
         case SCENARIO_TSUNAMI:
+            l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName);
+            
             // overwrite boundary conditions from scenario in case they have 
             // been explicitly set using command line arguments
-            if(!l_overwriteBoundaryTypes) {
-                l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName);
-            } else {
-                l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName, l_boundaryTypes);
-            }
+            if(l_overwriteBoundaryTypes)
+                ((SWE_TsunamiScenario *)l_scenario)->setBoundaryTypes(l_boundaryTypes);
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
             l_scenario = new SWE_CheckpointTsunamiScenario(l_checkpointFileName);
@@ -252,13 +251,12 @@ int main( int argc, char** argv ) {
             break;
 #endif
         case SCENARIO_ARTIFICIAL_TSUNAMI:
+            l_scenario = new SWE_ArtificialTsunamiScenario();
+
             // overwrite boundary conditions from scenario in case they have 
             // been explicitly set using command line arguments
-            if(!l_overwriteBoundaryTypes) {
-                l_scenario = new SWE_ArtificialTsunamiScenario();
-            } else {
-                l_scenario = new SWE_ArtificialTsunamiScenario(l_boundaryTypes);
-            }
+            if(l_overwriteBoundaryTypes)
+                ((SWE_ArtificialTsunamiScenario *)l_scenario)->setBoundaryTypes(l_boundaryTypes);
             break;
         case SCENARIO_PARTIAL_DAMBREAK:
             l_scenario = new SWE_PartialDambreak();

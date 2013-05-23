@@ -21,9 +21,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
         void setUp() {
             // Create scenario
             // Note: {BATHYMETRY,DISPLACEMENT}_FILE env variables must be passed when running the tests
-            BoundaryType boundaryTypes[] = {WALL, OUTFLOW, OUTFLOW, WALL};
-            scenario = new SWE_TsunamiScenario(std::string(BATHYMETRY_FILE),
-                std::string(DISPLACEMENT_FILE), boundaryTypes);
+            scenario = new SWE_TsunamiScenario(std::string(BATHYMETRY_FILE), std::string(DISPLACEMENT_FILE));
         }
         
         /// Tear Down called after each test case (delete scenario object)
@@ -86,6 +84,10 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
         
         /// Test correctness of boundary types (WALL or OUTFLOW)
         void testGetBoundaryType() {
+            // Set boundary types
+            BoundaryType boundaryTypes[] = {WALL, OUTFLOW, OUTFLOW, WALL};
+            scenario->setBoundaryTypes(boundaryTypes);
+            
             TSM_ASSERT_EQUALS("Left", scenario->getBoundaryType(BND_LEFT), WALL);
             TSM_ASSERT_EQUALS("Right", scenario->getBoundaryType(BND_RIGHT), OUTFLOW);
             TSM_ASSERT_EQUALS("Bottom", scenario->getBoundaryType(BND_BOTTOM), OUTFLOW);

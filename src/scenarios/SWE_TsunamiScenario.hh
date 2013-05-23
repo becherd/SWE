@@ -276,15 +276,9 @@ public:
     : SWE_Scenario() {
         loadInputFiles(bathymetryFileName, displacementFileName);
         
+        // Set default boundary types
         for(int i = 0; i < 4; i++)
             boundaryTypes[i] = OUTFLOW;
-    }
-    
-    SWE_TsunamiScenario(std::string bathymetryFileName, std::string displacementFileName, BoundaryType* _boundaryTypes) : SWE_Scenario() {
-            loadInputFiles(bathymetryFileName, displacementFileName);
-            
-            for(int i = 0; i < 4; i++)
-                boundaryTypes[i] = _boundaryTypes[i];
     }
     
     ~SWE_TsunamiScenario() {
@@ -323,7 +317,17 @@ public:
      * @return time when to end simulation
      */
     float endSimulation() {
-        return 50.0f;
+        return 50.f;
+    };
+    
+    /**
+     * Override default boundary types
+     *
+     * @param _boundaryTypes An array holding the left, right, bottom, top boundary types
+     */
+    void setBoundaryTypes(BoundaryType* _boundaryTypes) {
+        for(int i = 0; i < 4; i++)
+            boundaryTypes[i] = _boundaryTypes[i];
     };
 
    /**

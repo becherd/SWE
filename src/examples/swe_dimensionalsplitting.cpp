@@ -226,6 +226,11 @@ int main( int argc, char** argv ) {
         case SCENARIO_CHECKPOINT_TSUNAMI:
             // TODO: Pass overwritten boundary conditions to Scenario
             l_scenario = new SWE_CheckpointTsunamiScenario(l_checkpointFileName);
+            
+            // If cell size has not been overwritten using command line, get the number
+            // of cells from scenario
+            if(l_nX == 0 || l_nY == 0)
+                ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCells(l_nX, l_nY);
             break;
         case SCENARIO_ARTIFICIAL_TSUNAMI:
             // overwrite boundary conditions from scenario in case they have 

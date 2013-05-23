@@ -76,8 +76,10 @@ protected:
         retval = nc_open(checkpointFileName.c_str(), NC_NOWRITE, &file_id);
         if(retval != NC_NOERR) handleNetCDFError(retval);
         
-        // Read ID for x, y, h, hu, hv and b variables
-        retval = nc_inq_dimid(file_id, "x", &x_id);    
+        // Read ID for time, x, y, h, hu, hv and b variables
+        retval = nc_inq_unlimdim(file_id, &time_id);
+        if(retval != NC_NOERR) handleNetCDFError(retval);
+        retval = nc_inq_dimid(file_id, "x", &x_id);
         if(retval != NC_NOERR) handleNetCDFError(retval);
         retval = nc_inq_dimid(file_id, "y", &y_id);
         if(retval != NC_NOERR) handleNetCDFError(retval);
@@ -95,10 +97,15 @@ protected:
         if(retval != NC_NOERR) handleNetCDFError(retval);
         retval = nc_inq_dimlen(file_id, y_id, &y_len);
         if(retval != NC_NOERR) handleNetCDFError(retval);
+        retval = nc_inq_dimlen(file_id, time_id, &time_len);
+        if(retval != NC_NOERR) handleNetCDFError(retval);
         
         // We should have more than a single cell
         assert(x_len >= 2);
         assert(y_len >= 2);
+        
+        // And we should have at least a single timestep
+        assert(time_len >= 1);
         
         // Read minimum value for x and y variable
         // Note: We assume the x and y dimensions are stored in ascending order
@@ -215,6 +222,11 @@ public:
         return 0.0;
     };
     
+    void getNumberOfCells(int &nX, int &nY) {
+        nX = x_len;
+        nY = y_len;
+    }
+    
     /**
      * @return time when to end simulation
      */
@@ -228,12 +240,12 @@ public:
         return 50.0f;
     };
 
-   /**
-    * Determines the type (e.g. reflecting wall or outflow) of a certain boundary
-    *
-    * @param edge The boundary edge
-    * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
-    */
+    /**
+     * Determines the type (e.g. reflecting wall or outflow) of a certain boundary
+     *
+     * @param edge The boundary edge
+     * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
+     */
     BoundaryType getBoundaryType(BoundaryEdge edge) {
         // TODO: read boundary type from netCDF file
         return OUTFLOW;

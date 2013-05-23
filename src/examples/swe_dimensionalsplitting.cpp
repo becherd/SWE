@@ -3,8 +3,9 @@
 
 #include "blocks/SWE_DimensionalSplitting.hh"
 #include "scenarios/SWE_Scenario.hh"
-#include "scenarios/SWE_PartialDambreak.hh"
 #include "scenarios/SWE_TsunamiScenario.hh"
+#include "scenarios/SWE_CheckpointTsunamiScenario.hh"
+#include "scenarios/SWE_PartialDambreak.hh"
 #include "scenarios/SWE_ArtificialTsunamiScenario.hh"
 
 #ifdef WRITENETCDF
@@ -147,8 +148,8 @@ int main( int argc, char** argv ) {
     
     // Do several checks on supplied options
     if(!showUsage) {
-        // Check for required arguments x and y cells
-        if(l_nX == 0 || l_nY == 0) {
+        // Check for required arguments x and y cells unless we can get the info from a checkpoint file
+        if((l_nX == 0 || l_nY == 0) && l_checkpointFileName.empty()) {
             std::cerr << "Missing required arguments: number of cells in X (-x) and Y (-y) direction" << std::endl;
             showUsage = 1;
         }
@@ -223,9 +224,8 @@ int main( int argc, char** argv ) {
             }
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
-            // TODO: Implement checkpointed tsunami
-            std::cerr << "Checkpointed Tsunami is not implemented yet :(" << std::endl;
-            abort();
+            // TODO: Pass overwritten boundary conditions to Scenario
+            l_scenario = new SWE_CheckpointTsunamiScenario(l_checkpointFileName);
             break;
         case SCENARIO_ARTIFICIAL_TSUNAMI:
             // overwrite boundary conditions from scenario in case they have 

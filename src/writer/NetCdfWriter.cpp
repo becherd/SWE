@@ -232,14 +232,14 @@ void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
  * using only the checkpoint file
  *
  * @param i_numberOfCheckpoints The total number of checkpoints to be written
- * @param i_simulatedTime The total time to be simulated
+ * @param i_endSimulation The total time to be simulated
  * @param i_boundaryTypes The type of left, right, bottom top boundary (e.g. OUTFLOW or WALL)
  */
 void io::NetCdfWriter::writeSimulationInfo( int i_numberOfCheckpoints,
-                                            float i_simulatedTime,
+                                            float i_endSimulation,
                                             BoundaryType* i_boundaryTypes) {
     nc_put_att_int(dataFile, NC_GLOBAL, "numberOfCheckpoints", NC_INT, 1, &i_numberOfCheckpoints);
-    nc_put_att_float(dataFile, NC_GLOBAL, "simulatedTime", NC_FLOAT, 1, &i_simulatedTime);
+    nc_put_att_float(dataFile, NC_GLOBAL, "endSimulation", NC_FLOAT, 1, &i_endSimulation);
     
     ncPutBoundaryTypeAtt(NC_GLOBAL, "boundaryTypeLeft", i_boundaryTypes[BND_LEFT]);
     ncPutBoundaryTypeAtt(NC_GLOBAL, "boundaryTypeRight", i_boundaryTypes[BND_RIGHT]);

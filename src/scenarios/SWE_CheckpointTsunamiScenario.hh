@@ -231,12 +231,12 @@ public:
      * @return time when to end simulation
      */
     float endSimulation() {
-        float simulatedTime;
-        int status = nc_get_att_float(file_id, NC_GLOBAL, "simulatedTime", &simulatedTime);
+        float endSimulation;
+        int status = nc_get_att_float(file_id, NC_GLOBAL, "endSimulation", &endSimulation);
         if(status == NC_NOERR)
-            return simulatedTime;
+            return endSimulation;
         
-        std::cerr << "WARNING: Checkpointfile does not contain a 'simultedTime' attribute!" << std::endl;
+        std::cerr << "WARNING: Checkpointfile does not contain a 'endSimulation' attribute!" << std::endl;
         return 50.0f;
     };
 

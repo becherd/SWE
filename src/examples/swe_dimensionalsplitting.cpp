@@ -42,9 +42,9 @@ int main( int argc, char** argv ) {
     int l_simulationTime = 0.0;
     
     //! type of boundary conditions at LEFT, RIGHT, TOP, and BOTTOM boundary
-    BoundaryType l_boundaryConditions[4];
+    BoundaryType l_boundaryTypes[4];
     //! whether to override the scenario-defined conditions (1) or not (0)
-    int l_overwriteBoundaryConditions = 0;
+    int l_overwriteBoundaryTypes = 0;
     
     //! List of defined scenarios
     typedef enum {
@@ -109,19 +109,19 @@ int main( int argc, char** argv ) {
                     case 1:
                         // one option for all boundaries
                         for(int i = 0; i < 4; i++)
-                            l_boundaryConditions[i] = (optstr[0] == 'w') ? WALL : OUTFLOW;
+                            l_boundaryTypes[i] = (optstr[0] == 'w') ? WALL : OUTFLOW;
                         break;
                     case 2:
                         // first: left/right, second: top/bottom
                         for(int i = 0; i < 2; i++)
-                            l_boundaryConditions[i] = (optstr[0] == 'w') ? WALL : OUTFLOW;
+                            l_boundaryTypes[i] = (optstr[0] == 'w') ? WALL : OUTFLOW;
                         for(int i = 2; i < 4; i++)
-                            l_boundaryConditions[i] = (optstr[1] == 'w') ? WALL : OUTFLOW;
+                            l_boundaryTypes[i] = (optstr[1] == 'w') ? WALL : OUTFLOW;
                         break;
                     case 4:
                         // left right bottom top
                         for(int i = 0; i < 4; i++)
-                            l_boundaryConditions[i] = (optstr[i] == 'w') ? WALL : OUTFLOW;
+                            l_boundaryTypes[i] = (optstr[i] == 'w') ? WALL : OUTFLOW;
                         break;
                     default:
                         std::cerr << "Invalid option argument: Invalid boundary specification (-b)" << std::endl;
@@ -217,10 +217,10 @@ int main( int argc, char** argv ) {
         case SCENARIO_TSUNAMI:
             // overwrite boundary conditions from scenario in case they have 
             // been explicitly set using command line arguments
-            if(!l_overwriteBoundaryConditions) {
+            if(!l_overwriteBoundaryTypes) {
                 l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName);
             } else {
-                l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName, l_boundaryConditions);
+                l_scenario = new SWE_TsunamiScenario(l_bathymetryFileName, l_displacementFileName, l_boundaryTypes);
             }
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
@@ -235,15 +235,15 @@ int main( int argc, char** argv ) {
         case SCENARIO_ARTIFICIAL_TSUNAMI:
             // overwrite boundary conditions from scenario in case they have 
             // been explicitly set using command line arguments
-            if(!l_overwriteBoundaryConditions) {
+            if(!l_overwriteBoundaryTypes) {
                 l_scenario = new SWE_ArtificialTsunamiScenario();
             } else {
-                l_scenario = new SWE_ArtificialTsunamiScenario(l_boundaryConditions);
+                l_scenario = new SWE_ArtificialTsunamiScenario(l_boundaryTypes);
             }
             break;
         case SCENARIO_PARTIAL_DAMBREAK:
             l_scenario = new SWE_PartialDambreak();
-            if(l_overwriteBoundaryConditions) {
+            if(l_overwriteBoundaryTypes) {
                 std::cerr << "WARNING: PartialDambreak-Scenario does not support "
                           << "explicitly setting boundary conditions" << std::endl;
             }
@@ -284,6 +284,12 @@ int main( int argc, char** argv ) {
         l_endSimulation = l_simulationTime;
     }
     
+    // read actual boundary types (command line merged with scenario)
+    l_boundaryTypes[BND_LEFT] = l_scenario->getBoundaryType(BND_LEFT);
+    l_boundaryTypes[BND_RIGHT] = l_scenario->getBoundaryType(BND_RIGHT);
+    l_boundaryTypes[BND_BOTTOM] = l_scenario->getBoundaryType(BND_BOTTOM);
+    l_boundaryTypes[BND_TOP] = l_scenario->getBoundaryType(BND_TOP);
+    
     //! checkpoints when output files are written.
     float* l_checkPoints = new float[l_numberOfCheckPoints+1];
     
@@ -311,7 +317,7 @@ int main( int argc, char** argv ) {
   		l_dX, l_dY,
   		l_originX, l_originY);
         
-        l_writer.writeSimulationInfo(l_numberOfCheckPoints, l_endSimulation, l_boundaryConditions);
+        l_writer.writeSimulationInfo(l_numberOfCheckPoints, l_endSimulation, l_boundaryTypes);
 #else
     // consturct a VtkWriter
     io::VtkWriter l_writer( l_outputFileName,

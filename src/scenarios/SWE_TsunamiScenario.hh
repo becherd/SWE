@@ -1,14 +1,12 @@
 #ifndef __SWE_TSUNAMISCENARIO_HH
 #define __SWE_TSUNAMISCENARIO_HH
 
-#include "SWE_Scenario.hh"
-#include <cassert>
-#include <cstdlib>
-#include <string>
-#include <cstring>
 #include <iostream>
+#include <cassert>
+
 #include <netcdf.h>
-#include <stdio.h>
+
+#include "SWE_Scenario.hh"
 
 /**
  * Scenario "Tsunami"
@@ -189,7 +187,7 @@ protected:
         exit(status);
     }
     
-    float getInitialBathymetry(float x, float y) {
+    void getInitialBathymetryIndex(float x, float y, size_t index[2]) {
         // Find the nearest cell in the bathymetry data
         size_t xIndex, yIndex;
         
@@ -218,17 +216,12 @@ protected:
             // requested coordninate is below our lower domain bound
             yIndex = 0;
         }
-                
-        // Index array for reading values from NetCDF
-        size_t index[] = {yIndex, xIndex};
         
-        float initialBathymetry;
-        int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &initialBathymetry);
-        if(status != NC_NOERR) handleNetCDFError(status);
-        return initialBathymetry;
+        index[0] = yIndex;
+        index[1] = xIndex;
     }
     
-    float getDisplacement(float x, float y) {
+    int getDisplacementIndex(float x, float y, size_t index[2]) {
         float borderXMin = displacement_x_min - (displacement_x_step / 2);
         float borderXMax = displacement_x_max + (displacement_x_step / 2);
         float borderYMin = displacement_y_min - (displacement_y_step / 2);
@@ -236,7 +229,7 @@ protected:
         
         // Check if we're outside the displacement data domain
         if(x >= borderXMax || x <= borderXMin || y >= borderYMax || y <= borderYMin)
-            return 0.0;
+            return 0;
         
         // We're inside displacement data domain
         // Find the nearest cell in the displacement data
@@ -247,8 +240,29 @@ protected:
         assert(xIndex >= 0); assert(xIndex < displacement_x_len);
         assert(yIndex >= 0); assert(yIndex < displacement_y_len);
         
+        index[0] = yIndex;
+        index[1] = xIndex;
+        
+        return 1;
+    }
+    
+    float getInitialBathymetry(float x, float y) {
         // Index array for reading values from NetCDF
-        size_t index[] = {yIndex, xIndex};
+        size_t index[2];
+        getInitialBathymetryIndex(x, y, index);
+        
+        float bathymetry;
+        int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &bathymetry);
+        if(status != NC_NOERR) handleNetCDFError(status);
+        return bathymetry;
+    }
+    
+    float getDisplacement(float x, float y) {
+        // Index array for reading values from NetCDF
+        size_t index[2];
+        int hasDisplacement = getDisplacementIndex(x, y, index);
+        if(!hasDisplacement)
+            return 0.0;
         
         float displacement;
         int status = nc_get_var1_float(displacement_file_id, displacement_z_id, (const size_t *)index, &displacement);

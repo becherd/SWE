@@ -227,6 +227,29 @@ public:
         nY = y_len;
     }
     
+    int getNumberOfCheckpoints() {
+        int numberOfCheckpoints;
+        int status = nc_get_att_int(file_id, NC_GLOBAL, "numberOfCheckPoints", &numberOfCheckpoints);
+        if(status == NC_NOERR)
+            return numberOfCheckpoints;
+        
+        std::cerr << "ERROR: Unable to read number of checkpoints from checkpointfile" << std::endl;
+        assert(false);
+        return 0;
+    }
+    
+    void getLastCheckpoint(int &checkpoint, float &time) {
+        checkpoint = time_len - 1; // subtract initial zero-timestep
+
+        size_t index[] = { (size_t) checkpoint };
+        int status = nc_get_var1_float(file_id, time_id, (const size_t *)index, &time);
+        if(status == NC_NOERR)
+            return;
+        
+        std::cerr << "ERROR: Unable to read last timestep from checkpointfile!" << std::endl;
+        assert(false);
+    }
+    
     /**
      * @return time when to end simulation
      */

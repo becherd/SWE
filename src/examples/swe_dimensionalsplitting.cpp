@@ -358,15 +358,25 @@ int main( int argc, char** argv ) {
     
     //! simulation time.
     float l_t = 0.0;
+    
+    //! checkpoint counter
+    int l_checkpoint = 1;
+    
+    if(l_scenarioName == SCENARIO_CHECKPOINT_TSUNAMI) {
+        // load last checkpoint and timestep from scenario (checkpoint-file)
+        ((SWE_CheckpointTsunamiScenario *)l_scenario)->getLastCheckpoint(l_checkpoint, l_t);
+        l_checkpoint++;
+    }
+    
     progressBar.update(l_t);
     
     unsigned int l_iterations = 0;
     
     // loop over checkpoints
-    for(int c = 1; c <= l_numberOfCheckPoints; c++) {
+    while(l_checkpoint <= l_numberOfCheckPoints) {
         
         // do time steps until next checkpoint is reached
-        while( l_t < l_checkPoints[c] ) {
+        while( l_t < l_checkPoints[l_checkpoint] ) {
             // set values in ghost cells:
             l_dimensionalSplitting.setGhostLayer();
             
@@ -404,6 +414,8 @@ int main( int argc, char** argv ) {
                               l_dimensionalSplitting.getDischarge_hu(),
                               l_dimensionalSplitting.getDischarge_hv(),
                               l_t);
+        
+        l_checkpoint++;
     }
     
     /**

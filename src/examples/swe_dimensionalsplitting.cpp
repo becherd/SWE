@@ -174,6 +174,10 @@ int main( int argc, char** argv ) {
         // Check if a checkpoint-file is given as input. If so, switch to checkpoint scenario
         if(!l_checkpointFileName.empty()) {
             l_scenarioName = SCENARIO_CHECKPOINT_TSUNAMI;
+            if(l_nX > 0 || l_nY > 0)
+                std::cerr << "WARNING: Supplied number of grid cells will be ignored (reading from checkpoint)" << std::endl;
+            if(l_simulationTime > 0.0)
+                std::cerr << "WARNING: Supplied simulation time will be ignored (reading from checkpoint)" << std::endl;
         }
         
         if(l_scenarioName == SCENARIO_TSUNAMI) {
@@ -183,6 +187,9 @@ int main( int argc, char** argv ) {
                 std::cerr << "Missing required argument: bathymetry (-i) and displacement (-d) files must be supplied" << std::endl;
                 showUsage = 1;
             }
+        } else {
+            if(!l_bathymetryFileName.empty() || !l_displacementFileName.empty())
+                std::cerr << "WARNING: Supplied bathymetry and displacement data will be ignored" << std::endl;
         }
     }
     
@@ -234,13 +241,14 @@ int main( int argc, char** argv ) {
             }
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
-            // TODO: Pass overwritten boundary conditions to Scenario
             l_scenario = new SWE_CheckpointTsunamiScenario(l_checkpointFileName);
             
-            // If cell size has not been overwritten using command line, get the number
-            // of cells from scenario
-            if(l_nX == 0 || l_nY == 0)
-                ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCells(l_nX, l_nY);
+            // Read number if grid cells from checkpoint
+            ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCells(l_nX, l_nY);
+            
+            if(l_overwriteBoundaryTypes)
+                std::cerr << "WARNING: Loading checkpointed Simulation does not support "
+                          << "explicitly setting boundary conditions" << std::endl;
             break;
 #endif
         case SCENARIO_ARTIFICIAL_TSUNAMI:
@@ -254,10 +262,9 @@ int main( int argc, char** argv ) {
             break;
         case SCENARIO_PARTIAL_DAMBREAK:
             l_scenario = new SWE_PartialDambreak();
-            if(l_overwriteBoundaryTypes) {
+            if(l_overwriteBoundaryTypes)
                 std::cerr << "WARNING: PartialDambreak-Scenario does not support "
                           << "explicitly setting boundary conditions" << std::endl;
-            }
             break;
         default:
             std::cerr << "Invalid Scenario" << std::endl;

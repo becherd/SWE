@@ -175,6 +175,51 @@ protected:
         if(status != NC_NOERR) handleNetCDFError(status);
         return value;
     }
+    
+    BoundaryType readBoundaryType(const char *name) {
+        int status;
+        size_t length;
+        
+        // get length of boundary type attribute
+        status = nc_inq_attlen(file_id, NC_GLOBAL, name, &length);
+        if(status != NC_NOERR) {
+            std::cerr << "WARNING: Unable to read boundary type from checkpointfile: "
+                      << "Assuming OUTFLOW" << std::endl;
+            assert(false);
+            return OUTFLOW;
+        }
+        
+        // String buffer, make sure it is NULL-terminated
+        char typeCharArray[length+1];
+        typeCharArray[length] = '\0';
+        
+        // read attribute into buffer
+        status = nc_get_att_text(file_id, NC_GLOBAL, name, typeCharArray);
+        if(status != NC_NOERR) {
+            std::cerr << "WARNING: Unable to read boundary type from checkpointfile: "
+                      << "Assuming OUTFLOW" << std::endl;
+            assert(false);
+            return OUTFLOW;
+        }
+        
+        std::string typeString(typeCharArray);
+        
+        if(typeString == "outflow")
+            return OUTFLOW;
+        if(typeString == "wall")
+            return WALL;
+        if(typeString == "passive")
+            return PASSIVE;
+        if(typeString == "inflow")
+            return INFLOW;
+        if(typeString == "connect")
+            return CONNECT;
+        
+        std::cerr << "WARNING: Unknown boundary type '" << typeString << "': "
+                  << "Assuming OUTFLOW" << std::endl;
+        assert(false);
+        return OUTFLOW;
+    }
 
 public:
 
@@ -273,8 +318,13 @@ public:
      * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
      */
     BoundaryType getBoundaryType(BoundaryEdge edge) {
-        // TODO: read boundary type from netCDF file
-        return OUTFLOW;
+        if(edge == BND_LEFT)
+            return readBoundaryType("boundaryTypeLeft");
+        if(edge == BND_RIGHT)
+            return readBoundaryType("boundaryTypeRight");
+        if(edge == BND_BOTTOM)
+            return readBoundaryType("boundaryTypeBottom");
+        return readBoundaryType("boundaryTypeTop");
     };
     
     /** Get the boundary positions

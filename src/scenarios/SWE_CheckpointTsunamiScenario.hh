@@ -229,13 +229,14 @@ public:
     
     int getNumberOfCheckpoints() {
         int numberOfCheckpoints;
-        int status = nc_get_att_int(file_id, NC_GLOBAL, "numberOfCheckPoints", &numberOfCheckpoints);
+        int status = nc_get_att_int(file_id, NC_GLOBAL, "numberOfCheckpoints", &numberOfCheckpoints);
         if(status == NC_NOERR)
             return numberOfCheckpoints;
         
-        std::cerr << "ERROR: Unable to read number of checkpoints from checkpointfile" << std::endl;
+        std::cerr << "ERROR: Unable to read number of checkpoints from checkpointfile: "
+                  << nc_strerror(status) << std::endl;
         assert(false);
-        return 0;
+        return 1;
     }
     
     void getLastCheckpoint(int &checkpoint, float &time) {
@@ -246,7 +247,8 @@ public:
         if(status == NC_NOERR)
             return;
         
-        std::cerr << "ERROR: Unable to read last timestep from checkpointfile!" << std::endl;
+        std::cerr << "ERROR: Unable to read last timestep from checkpointfile: " 
+                  << nc_strerror(status) << std::endl;
         assert(false);
     }
     
@@ -259,7 +261,8 @@ public:
         if(status == NC_NOERR)
             return endSimulation;
         
-        std::cerr << "WARNING: Checkpointfile does not contain a 'endSimulation' attribute!" << std::endl;
+        std::cerr << "WARNING: Unable to read simulation end time from checkpointfile: "
+                  << nc_strerror(status) << std::endl;
         return 50.0f;
     };
 

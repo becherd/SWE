@@ -162,7 +162,7 @@ int main( int argc, char** argv ) {
             showUsage = 1;
         }
         // Check for required output base file name
-        if(l_baseName.empty()) {
+        if(l_baseName.empty() && l_checkpointFileName.empty()) {
             std::cerr << "Missing required argument: base name of output file (-o)" << std::endl;
             showUsage = 1;
         }
@@ -174,6 +174,14 @@ int main( int argc, char** argv ) {
         // Check if a checkpoint-file is given as input. If so, switch to checkpoint scenario
         if(!l_checkpointFileName.empty()) {
             l_scenarioName = SCENARIO_CHECKPOINT_TSUNAMI;
+            
+            // We handle the file name of checkpoint and output data files without the ".nc"
+            // extension internally, so we're removing the extension here in case it is supplied
+            int cpLength = l_checkpointFileName.length();
+            if(l_checkpointFileName.substr(cpLength-3, 3).compare(".nc") == 0) {
+                l_checkpointFileName.erase(cpLength-3, 3);
+            }
+            
             if(l_nX > 0 || l_nY > 0)
                 std::cerr << "WARNING: Supplied number of grid cells will be ignored (reading from checkpoint)" << std::endl;
             if(l_simulationTime > 0.0)
@@ -225,6 +233,32 @@ int main( int argc, char** argv ) {
         return 0;
     }
     
+    //! output file basename (with block coordinates)
+    std::string l_outputFileName = generateBaseFileName(l_baseName,0,0);
+    
+#ifdef WRITENETCDF
+    if(l_scenarioName == SCENARIO_TSUNAMI) {
+        // This is a tsunami scenario, check if the output file (with .nc-extension) exists
+        // In that case switch to checkpoint scenario
+        int ncOutputFile;
+        int status = nc_open((l_outputFileName + ".nc").c_str(), NC_NOWRITE, &ncOutputFile);
+        if(status == NC_NOERR) {
+            // Output file exists and is a NetCDF file => switch to checkpointing
+            l_scenarioName = SCENARIO_CHECKPOINT_TSUNAMI;
+            l_checkpointFileName = l_outputFileName;
+            // nc_close(ncOutputFile);
+            // std::cout << "YIPPIE: " << ncOutputFile << std::endl;
+        }
+        std::cout << "NetCDF test opening: " << nc_strerror(status) << std::endl;
+        
+        status = nc_close(ncOutputFile);
+        std::cout << "YIPPIE: " << ncOutputFile << std::endl;
+        
+        // std::cout << "NetCDF writer opening test: " << fileName << std::endl;
+        std::cout << "NetCDF test close: " << nc_strerror(status) << std::endl;
+    }
+#endif
+    
     //! Pointer to instance of chosen scenario
     SWE_Scenario *l_scenario;
     
@@ -240,7 +274,7 @@ int main( int argc, char** argv ) {
                 ((SWE_TsunamiScenario *)l_scenario)->setBoundaryTypes(l_boundaryTypes);
             break;
         case SCENARIO_CHECKPOINT_TSUNAMI:
-            l_scenario = new SWE_CheckpointTsunamiScenario(l_checkpointFileName);
+            l_scenario = new SWE_CheckpointTsunamiScenario(l_checkpointFileName + ".nc");
             
             // Read number if grid cells from checkpoint
             ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCells(l_nX, l_nY);
@@ -300,6 +334,21 @@ int main( int argc, char** argv ) {
         l_endSimulation = l_simulationTime;
     }
     
+    //! simulation time.
+    float l_t = 0.0;
+    
+    //! checkpoint counter
+    int l_checkpoint = 1;
+    
+    if(l_scenarioName == SCENARIO_CHECKPOINT_TSUNAMI) {
+        // read total number of checkpoints
+        l_numberOfCheckPoints = ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCheckpoints();
+        
+        // load last checkpoint and timestep from scenario (checkpoint-file)
+        ((SWE_CheckpointTsunamiScenario *)l_scenario)->getLastCheckpoint(l_checkpoint, l_t);
+        l_checkpoint++;
+    }
+    
     // read actual boundary types (command line merged with scenario)
     l_boundaryTypes[BND_LEFT] = l_scenario->getBoundaryType(BND_LEFT);
     l_boundaryTypes[BND_RIGHT] = l_scenario->getBoundaryType(BND_RIGHT);
@@ -318,13 +367,30 @@ int main( int argc, char** argv ) {
     tools::ProgressBar progressBar(l_endSimulation);
     
     // write the output at time zero
-    tools::Logger::logger.printOutputTime((float) 0.);
-    progressBar.update(0.);
+    tools::Logger::logger.printOutputTime((float) l_t);
+    progressBar.update(l_t);
     
-    std::string l_outputFileName = generateBaseFileName(l_baseName,0,0);
     //boundary size of the ghost layers
     io::BoundarySize l_boundarySize = {{1, 1, 1, 1}};
+    
+    // Delete scenarioto free resources and close opened files
+    delete l_scenario;
+    
 #ifdef WRITENETCDF
+    if(l_scenarioName == SCENARIO_CHECKPOINT_TSUNAMI) {
+        if(l_outputFileName.empty()) {
+            // If there is no output file name given, use the checkpoint file
+            l_outputFileName = l_checkpointFileName;
+        } else if(l_outputFileName.compare(l_checkpointFileName) != 0) {
+            // output file name given and it is not equal to the checkpoint file
+            // therefore, we have to make a copy of our checkpointfile
+            // in order to continue the simulation
+            std::ifstream src((l_checkpointFileName + ".nc").c_str());
+            std::ofstream dst((l_outputFileName + ".nc").c_str());
+            dst << src.rdbuf();
+        }
+    }
+    
     //construct a NetCdfWriter
     io::NetCdfWriter l_writer( l_outputFileName,
         l_dimensionalSplitting.getBathymetry(),
@@ -342,12 +408,14 @@ int main( int argc, char** argv ) {
   		l_nX, l_nY,
   		l_dX, l_dY );
 #endif
-    // Write zero time step
-    l_writer.writeTimeStep( l_dimensionalSplitting.getWaterHeight(),
+    if(l_scenarioName != SCENARIO_CHECKPOINT_TSUNAMI) {
+        // Write zero time step
+        l_writer.writeTimeStep( l_dimensionalSplitting.getWaterHeight(),
                                 l_dimensionalSplitting.getDischarge_hu(),
                                 l_dimensionalSplitting.getDischarge_hv(), 
                                 (float) 0.);
-    
+    }
+        
     /**
      * Simulation.
      */
@@ -355,18 +423,6 @@ int main( int argc, char** argv ) {
     progressBar.clear();
     tools::Logger::logger.printStartMessage();
     tools::Logger::logger.initWallClockTime(time(NULL));
-    
-    //! simulation time.
-    float l_t = 0.0;
-    
-    //! checkpoint counter
-    int l_checkpoint = 1;
-    
-    if(l_scenarioName == SCENARIO_CHECKPOINT_TSUNAMI) {
-        // load last checkpoint and timestep from scenario (checkpoint-file)
-        ((SWE_CheckpointTsunamiScenario *)l_scenario)->getLastCheckpoint(l_checkpoint, l_t);
-        l_checkpoint++;
-    }
     
     progressBar.update(l_t);
     
@@ -433,9 +489,6 @@ int main( int argc, char** argv ) {
     
     // printer iteration counter
     tools::Logger::logger.printIterationsDone(l_iterations);
-    
-    // free scenario object
-    delete l_scenario;
     
     return 0;
 }

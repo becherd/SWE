@@ -114,7 +114,12 @@ if env['writeNetCDF'] == True:
   env.CxxTest(['tests/SWE_TsunamiScenarioTest.h'],
     CPPDEFINES=[
       ('BATHYMETRY_FILE', '\\"' + File('#src/tests/test_bathymetry.nc').srcnode().abspath + '\\"'),
-      ('DISPLACEMENT_FILE', '\\"' + File('#src/tests/test_displacement.nc').srcnode().abspath + '\\"'),
+      ('DISPLACEMENT_FILE', '\\"' + File('#src/tests/test_displacement.nc').srcnode().abspath + '\\"')
+    ]
+  )
+  env.CxxTest(['tests/SWE_CheckpointTsunamiScenarioTest.h'],
+    CPPDEFINES=[
+      ('CHECKPOINT_FILE', '\\"' + File('#src/tests/test_checkpoint.nc').srcnode().abspath + '\\"')
     ]
   )
 else:

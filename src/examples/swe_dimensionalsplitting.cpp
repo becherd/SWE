@@ -246,16 +246,8 @@ int main( int argc, char** argv ) {
             // Output file exists and is a NetCDF file => switch to checkpointing
             l_scenarioName = SCENARIO_CHECKPOINT_TSUNAMI;
             l_checkpointFileName = l_outputFileName;
-            // nc_close(ncOutputFile);
-            // std::cout << "YIPPIE: " << ncOutputFile << std::endl;
+            nc_close(ncOutputFile);
         }
-        std::cout << "NetCDF test opening: " << nc_strerror(status) << std::endl;
-        
-        status = nc_close(ncOutputFile);
-        std::cout << "YIPPIE: " << ncOutputFile << std::endl;
-        
-        // std::cout << "NetCDF writer opening test: " << fileName << std::endl;
-        std::cout << "NetCDF test close: " << nc_strerror(status) << std::endl;
     }
 #endif
     

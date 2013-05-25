@@ -12,7 +12,7 @@
  * Scenario "Tsunami"
  *
  * A generic Tsunami Scenario loading bathymetry and displacement data from
- * from NetCDF files.
+ * NetCDF files.
  */
 class SWE_TsunamiScenario : public SWE_Scenario {
 
@@ -35,16 +35,22 @@ protected:
     size_t bathymetry_x_len;
     //! The NetCDF bathymetry length of y dimension
     size_t bathymetry_y_len;
-    //! The NetCDF bathymetry minimum value in x dimension
-    float bathymetry_x_min;
-    //! The NetCDF bathymetry maximum value in x dimension
-    float bathymetry_x_max;
+    
+    //! The NetCDF bathymetry values of x dimensions
+    float *bathymetry_x_values;
+    //! The NetCDF bathymetry left boundary (in x dimension)
+    float bathymetry_left;
+    //! The NetCDF bathymetry right boundary (in x dimension)
+    float bathymetry_right;
     //! The NetCDF bathymetry step width in x dimension (step width between two cells)
     float bathymetry_x_step;
-    //! The NetCDF bathymetry minimum value in y dimension
-    float bathymetry_y_min;
-    //! The NetCDF bathymetry maximum value in y dimension
-    float bathymetry_y_max;
+    
+    //! The NetCDF bathymetry values of y dimensions
+    float *bathymetry_y_values;
+    //! The NetCDF bathymetry bottom boundary (in y dimension)
+    float bathymetry_bottom;
+    //! The NetCDF bathymetry top boundary (in y dimension)
+    float bathymetry_top;
     //! The NetCDF bathymetry step width in y dimension (step width between two cells)
     float bathymetry_y_step;
     
@@ -60,33 +66,34 @@ protected:
     //! The NetCDF displacement length of x dimension
     size_t displacement_x_len;
     //! The NetCDF displacement length of y dimension
-    size_t displacement_y_len; 
-    //! The NetCDF displacement minimum value in x dimension
-    float displacement_x_min;
-    //! The NetCDF displacement maximum value in x dimension
-    float displacement_x_max;
+    size_t displacement_y_len;
+    
+    //! The NetCDF displacement values of x dimensions
+    float *displacement_x_values;
+    //! The NetCDF displacement left boundary (in x dimension)
+    float displacement_left;
+    //! The NetCDF displacement right boundary (in x dimension)
+    float displacement_right;
     //! The NetCDF displacement step width in x dimension (step width between two cells)
     float displacement_x_step;
-    //! The NetCDF displacement minimum value in y dimension
-    float displacement_y_min;
-    //! The NetCDF displacement maximum value in y dimension
-    float displacement_y_max;
+    
+    //! The NetCDF displacement values of y dimensions
+    float *displacement_y_values;
+    //! The NetCDF displacement bottom boundary (in y dimension)
+    float displacement_bottom;
+    //! The NetCDF displacement top boundary (in y dimension)
+    float displacement_top;
     //! The NetCDF displacement step width in y dimension (step width between two cells)
     float displacement_y_step;
     
-    
+    /// Load both the bathymetry and displacement file
     /**
-     * Load both the bathymetry and displacement file
-     *
      * @param bathymetryFileName The file name of the bathymetry data file
      * @param displacementFileName The file name of the displacement data file
      */
     void loadInputFiles(std::string bathymetryFileName, std::string displacementFileName) {
         // We can store the return values of the netCDF methods here
         int retval;
-        
-        // Index for adressing 1D-variable values
-        size_t index[1];
         
         /**
          * Load the bathymetry file
@@ -113,25 +120,35 @@ protected:
         assert(bathymetry_x_len >= 2);
         assert(bathymetry_y_len >= 2);
         
-        // Read minimum value for x and y variable
-        // Note: We assume the x and y dimensions are stored in ascending order
-        index[0] = 0;
-        nc_get_var1_float(bathymetry_file_id, bathymetry_x_id, (const size_t *)index, &bathymetry_x_min);
-        nc_get_var1_float(bathymetry_file_id, bathymetry_y_id, (const size_t *)index, &bathymetry_y_min);
+        // Allocate some memory for the dimensions
+        bathymetry_x_values = new float[bathymetry_x_len];
+        bathymetry_y_values = new float[bathymetry_y_len];
         
-        // Read maximum value for x and y variable
-        index[0] = bathymetry_x_len - 1;
-        nc_get_var1_float(bathymetry_file_id, bathymetry_x_id, (const size_t *)index, &bathymetry_x_max);
-        index[0] = bathymetry_y_len - 1;
-        nc_get_var1_float(bathymetry_file_id, bathymetry_y_id, (const size_t *)index, &bathymetry_y_max);
+        // Read dimensions from file
+        retval = nc_get_var_float(bathymetry_file_id, bathymetry_x_id, bathymetry_x_values);
+        retval = nc_get_var_float(bathymetry_file_id, bathymetry_y_id, bathymetry_y_values);
+        
+        // COARDS note: x and y dimensions may be either monotonically increasing
+        // or monotonically decreasing
         
         // Calculate step width (cell size) for x and y variable
-        // Note: We assume the step width remains constaint over the complete domain
-        bathymetry_x_step = (bathymetry_x_max - bathymetry_x_min) / (bathymetry_x_len - 1);
-        bathymetry_y_step = (bathymetry_y_max - bathymetry_y_min) / (bathymetry_y_len - 1);
+        // Note: This calculation is only correct in case we have equally spaced cells in the file
+        // However, the error should be negligible in case the assumption of equally spaced
+        // cells holds not to be true
+        // Note: the step size is negative in case the values are in decreasing order
+        bathymetry_x_step = (bathymetry_x_values[bathymetry_x_len-1] - bathymetry_x_values[0]) / (bathymetry_x_len-1);
+        bathymetry_y_step = (bathymetry_y_values[bathymetry_y_len-1] - bathymetry_y_values[0]) / (bathymetry_y_len-1);
+
+        // Step width should not be zero
+        assert(bathymetry_x_step != 0.0); assert(bathymetry_y_step != 0.0);
         
-        // Step size should be greater than zero
-        assert(bathymetry_x_step > 0.0); assert(bathymetry_y_step > 0.0);
+        // Calculate the left, right, bottom and top end of the domain, since the
+        // values denote the center value of a cell, we have to add half a
+        // cell of margin to all ends.
+        bathymetry_left = bathymetry_x_values[0] - bathymetry_x_step/2;
+        bathymetry_right = bathymetry_x_values[bathymetry_x_len-1] + bathymetry_x_step/2;
+        bathymetry_bottom = bathymetry_y_values[0] - bathymetry_y_step/2;
+        bathymetry_top = bathymetry_y_values[bathymetry_y_len-1] + bathymetry_y_step/2;
         
         /**
          * Load the displacement file
@@ -155,114 +172,189 @@ protected:
         if(retval != NC_NOERR) handleNetCDFError(retval);
         
         // We should have more than a single cell
-        assert(bathymetry_x_len >= 2);
-        assert(bathymetry_y_len >= 2);
+        assert(displacement_x_len >= 2);
+        assert(displacement_y_len >= 2);
         // The dimensions of the displacement file cannot be bigger than the dimensions of the bathymetry file
         assert(displacement_x_len <= bathymetry_x_len);
         assert(displacement_y_len <= bathymetry_y_len);
         
-        // Read minimum value for x and y variable
-        // Note: We assume the x and y dimensions are stored in ascending order
-        index[0] = 0;
-        nc_get_var1_float(displacement_file_id, displacement_x_id, (const size_t *)index, &displacement_x_min);
-        nc_get_var1_float(displacement_file_id, displacement_y_id, (const size_t *)index, &displacement_y_min);
+        // Allocate some memory for the dimensions
+        displacement_x_values = new float[displacement_x_len];
+        displacement_y_values = new float[displacement_y_len];
         
-        // Read maximum value for x and y variable
-        index[0] = displacement_x_len - 1;
-        nc_get_var1_float(displacement_file_id, displacement_x_id, (const size_t *)index, &displacement_x_max);
-        index[0] = displacement_y_len - 1;
-        nc_get_var1_float(displacement_file_id, displacement_y_id, (const size_t *)index, &displacement_y_max);
+        // Read dimensions from file
+        retval = nc_get_var_float(displacement_file_id, displacement_x_id, displacement_x_values);
+        retval = nc_get_var_float(displacement_file_id, displacement_y_id, displacement_y_values);
+        
+        // COARDS note: x and y dimensions may be either monotonically increasing
+        // or monotonically decreasing
         
         // Calculate step width (cell size) for x and y variable
-        // Note: We assume the step width remains constaint over the complete domain
-        displacement_x_step = (displacement_x_max - displacement_x_min) / (displacement_x_len - 1);
-        displacement_y_step = (displacement_y_max - displacement_y_min) / (displacement_y_len - 1);
+        // Note: This calculation is only correct in case we have equally spaced cells in the file
+        // However, the error should be negligible in case the assumption of equally spaced
+        // cells holds not to be true
+        // Note: the step size is negative in case the values are in decreasing order
+        displacement_x_step = (displacement_x_values[displacement_x_len-1] - displacement_x_values[0]) / (displacement_x_len-1);
+        displacement_y_step = (displacement_y_values[displacement_y_len-1] - displacement_y_values[0]) / (displacement_y_len-1);
         
-        // Step size should be greater than zero
-        assert(displacement_x_step > 0.0); assert(displacement_y_step > 0.0);
+        // Step width should not be zero
+        assert(displacement_x_step != 0.0); assert(displacement_y_step != 0.0);
+        
+        // Calculate the left, right, bottom and top end of the domain, since the
+        // values denote the center value of a cell, we have to add half a
+        // cell of margin to all ends.
+        displacement_left = displacement_x_values[0] - displacement_x_step/2;
+        displacement_right = displacement_x_values[displacement_x_len-1] + displacement_x_step/2;
+        displacement_bottom = displacement_y_values[0] - displacement_y_step/2;
+        displacement_top = displacement_y_values[displacement_y_len-1] + displacement_y_step/2;
     }
     
+    /// Abort execution with netCDF error message
+    /**
+     * @param status The error status returned by a netCDF function call
+     */
     void handleNetCDFError(int status) {
         std::cerr << "NetCDF Error: " << nc_strerror(status) << std::endl;
         exit(status);
     }
     
-    void getInitialBathymetryIndex(float x, float y, size_t index[2]) {
-        // Find the nearest cell in the bathymetry data
-        size_t xIndex, yIndex;
+    /// Calculate the nearest cell index for a position inside a domain for a single dimension
+    /**
+     * @param position The position inside the domain
+     * @param origin The origin of the domain
+     * @param stepWidth The assumed step width between cells
+     * @param values Array of dimension data (the center position of each cell)
+     * @param length The total length of the values array
+     * @return The index of the nearest cell in the domain
+     */
+    size_t getIndex1D(float position, float origin, float stepWidth, float *values, size_t length) {
+        size_t index;
         
-        // relative position in the domain
-        float relPosX = x - getBoundaryPos(BND_LEFT);
-        float relPosY = y - getBoundaryPos(BND_BOTTOM);
+        // calculate the relative positon from the origin (e.g. left-boundary in x-dimension)
+        float relativePosition = position - origin;
         
-        if(relPosX >= tolerance) {
-            xIndex = static_cast <size_t> (std::floor(relPosX / bathymetry_x_step));
+        // Let's assume all the cells are spaced equally
+        if(relativePosition >= tolerance) {
+            index = static_cast <size_t> (std::floor(relativePosition / stepWidth));
             
             // make sure the index stays inside variable index bounds
-            if(xIndex >= bathymetry_x_len)
-                xIndex = bathymetry_x_len-1;
+            if(index >= length)
+                index = length-1;
         } else {
-            // requested coordninate is below our lower domain bound
-            xIndex = 0;
+            // requested coordinate is below our lower domain bound
+            index = 0;
         }
         
-        if(relPosY >= tolerance) {
-            yIndex = static_cast <size_t> (std::floor(relPosY / bathymetry_y_step));
-            
-            // make sure the index stays inside variable index bounds
-            if(yIndex >= bathymetry_y_len)
-                yIndex = bathymetry_y_len-1;
-        } else {
-            // requested coordninate is below our lower domain bound
-            yIndex = 0;
+        // Let's validate the assumption of equally spaced cells
+        float distance = std::fabs(position - values[index]);
+        int indexIsCorrect = 1;
+        if(index >= 1)
+            indexIsCorrect = indexIsCorrect && (distance <= std::fabs(position - values[index-1]));
+        if(index <= length-2)
+            indexIsCorrect = indexIsCorrect && (distance <= std::fabs(position - values[index+1]));
+        
+        if(indexIsCorrect)
+            return index;
+        
+        // Oh, the assumption of equally spaced cells seems to hold not to be true :(
+        // Lets do a binary search over all the values to find the nearest cell index
+        return binaryIndexSearch(position, values, length, 0, length-1);
+    }
+    
+    /// Perform an extended binary search on dimension data to find the nearest cell
+    /**
+     * @param position The position inside the domain
+     * @param values Array of dimension data (the center position of each cell)
+     * @param length The total length of the values array
+     * @param start The start index from where to search on
+     * @param end The end index till where to search on
+     * @return The index of the nearest cell in the domain
+     */
+    size_t binaryIndexSearch(float position, float *values, size_t length, size_t start, size_t end) {
+        assert(start >= 0);
+        assert(end <= length-1);
+        assert(start <= end);        
+        
+        if(start == end)
+            return start;
+        
+        // Start in the middle of the remaining values
+        size_t searchIndex = (start+end)/2;
+        // Calculate distance to chosen cell
+        float distance = std::fabs(position - values[searchIndex]);
+        
+        if(searchIndex >= 1) {
+            // in case there is a left-sided cell, check if the distance to the left
+            // cell is less than the distance to the chosen cell. If so, we can continue
+            // to search only on the left side of our chosen cell index
+            if(distance > std::fabs(position - values[searchIndex-1]))
+                return binaryIndexSearch(position, values, length, start, searchIndex-1);
+        }
+        if(searchIndex <= length-2) {
+            // in case there is a right-sided cell, check if the distance to the right
+            // cell is less than the distance to the chosen cell. If so, we can continue
+            // to search only on the right side of our chosen cell index
+            if(distance > std::fabs(position - values[searchIndex+1]))
+                return binaryIndexSearch(position, values, length, searchIndex+1, end);
         }
         
-        index[0] = yIndex;
-        index[1] = xIndex;
+        // In case neither the left-hand nor the right-hand cell of our chosen cell are
+        // "nearer" to the position in the domain, we already found the optimal cell index
+        return searchIndex;
     }
     
-    int getDisplacementIndex(float x, float y, size_t index[2]) {
-        float borderXMin = displacement_x_min - (displacement_x_step / 2);
-        float borderXMax = displacement_x_max + (displacement_x_step / 2);
-        float borderYMin = displacement_y_min - (displacement_y_step / 2);
-        float borderYMax = displacement_y_max + (displacement_y_step / 2);
-        
-        // Check if we're outside the displacement data domain
-        if(x >= borderXMax || x <= borderXMin || y >= borderYMax || y <= borderYMin)
-            return 0;
-        
-        // We're inside displacement data domain
-        // Find the nearest cell in the displacement data
-        size_t xIndex = static_cast <size_t> (std::floor((x - borderXMin) / displacement_x_step));
-        size_t yIndex = static_cast <size_t> (std::floor((y - borderYMin) / displacement_y_step));
-        
-        // Check index bounds
-        assert(xIndex >= 0); assert(xIndex < displacement_x_len);
-        assert(yIndex >= 0); assert(yIndex < displacement_y_len);
-        
-        index[0] = yIndex;
-        index[1] = xIndex;
-        
-        return 1;
+    /// Checks if a supplied value lies between two boundaries 
+    /**
+     * @param value The value to perform the boundary check on
+     * @param left The left boundary value (may be greater than right boundary)
+     * @param right The right boundary value (may be less than left boundary)
+     * @return whether True if value lies between boundaries, False if not
+     */
+    int isBetween(float value, float left, float right) {
+        if(left < right)
+            return (value > left && value < right);
+        return (value < left && value > right);
     }
     
+    /// Read the initial bathymetry data (before earthquake) from the input file
+    /**
+     * @param x The x position in the domain
+     * @param y The y posiition in the domain
+     * @return The z value (bathymetry) read from data file
+     */
     float getInitialBathymetry(float x, float y) {
         // Index array for reading values from NetCDF
         size_t index[2];
-        getInitialBathymetryIndex(x, y, index);
+        // y index
+        index[0] = getIndex1D(y, bathymetry_bottom, bathymetry_y_step, bathymetry_y_values, bathymetry_y_len);
+        // x index
+        index[1] = getIndex1D(x, bathymetry_left, bathymetry_x_step, bathymetry_x_values, bathymetry_x_len);
         
         float bathymetry;
         int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &bathymetry);
         if(status != NC_NOERR) handleNetCDFError(status);
         return bathymetry;
+        
     }
     
+    /// Read the displacement data (caused by earthquake) from the input file
+    /**
+     * @param x The x position in the domain
+     * @param y The y posiition in the domain
+     * @return The z value (displacement) read from data file
+     */
     float getDisplacement(float x, float y) {
+        // Check if we're outside the displacement data domain
+        if(!isBetween(x, displacement_left, displacement_right) || !isBetween(y, displacement_bottom, displacement_top))
+            return 0.0;
+        
         // Index array for reading values from NetCDF
         size_t index[2];
-        int hasDisplacement = getDisplacementIndex(x, y, index);
-        if(!hasDisplacement)
-            return 0.0;
+        // y index
+        index[0] = getIndex1D(y, displacement_bottom, displacement_y_step, displacement_y_values, displacement_y_len);
+        // x index
+        index[1] = getIndex1D(x, displacement_left, displacement_x_step, displacement_x_values, displacement_x_len);
+        
         
         float displacement;
         int status = nc_get_var1_float(displacement_file_id, displacement_z_id, (const size_t *)index, &displacement);
@@ -271,7 +363,11 @@ protected:
     }
 
 public:
-
+    /// Constructor
+    /**
+     * @param bathymetryFileName The file name of the bathymetry data file to load
+     * @param displacementFileName The file name of the displacement data file to load
+     */
     SWE_TsunamiScenario(std::string bathymetryFileName, std::string displacementFileName)
     : SWE_Scenario() {
         loadInputFiles(bathymetryFileName, displacementFileName);
@@ -285,6 +381,11 @@ public:
         // Close open NetCDF handles
         nc_close(bathymetry_file_id);
         nc_close(displacement_file_id);
+        
+        delete[] bathymetry_x_values;
+        delete[] bathymetry_y_values;
+        delete[] displacement_x_values;
+        delete[] displacement_y_values;
     }
     
     /**
@@ -320,9 +421,8 @@ public:
         return 50.f;
     };
     
+    /// Override default boundary types
     /**
-     * Override default boundary types
-     *
      * @param _boundaryTypes An array holding the left, right, bottom, top boundary types
      */
     void setBoundaryTypes(BoundaryType* _boundaryTypes) {
@@ -330,30 +430,29 @@ public:
             boundaryTypes[i] = _boundaryTypes[i];
     };
 
-   /**
-    * Determines the type (e.g. reflecting wall or outflow) of a certain boundary
-    *
-    * @param edge The boundary edge
-    * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
-    */
+    /// Get the type (e.g. reflecting wall or outflow) of a certain boundary
+    /**
+     * @param edge The boundary edge
+     * @return The type of the specified boundary (e.g. OUTFLOW or WALL)
+     */
     BoundaryType getBoundaryType(BoundaryEdge edge) {
         return boundaryTypes[edge];
     };
     
-    /** Get the boundary positions
-     *
+    /// Get the boundary position of a certain boundary
+    /**
      * @param i_edge which edge
      * @return value in the corresponding dimension
      */
     float getBoundaryPos(BoundaryEdge i_edge) {
         if ( i_edge == BND_LEFT )
-            return bathymetry_x_min - (bathymetry_x_step / 2);
+            return (bathymetry_left < bathymetry_right) ? bathymetry_left : bathymetry_right;
         else if ( i_edge == BND_RIGHT)
-            return bathymetry_x_max + (bathymetry_x_step / 2);
+            return (bathymetry_left > bathymetry_right) ? bathymetry_left : bathymetry_right;
         else if ( i_edge == BND_BOTTOM )
-            return bathymetry_y_min - (bathymetry_y_step / 2);
+            return (bathymetry_bottom < bathymetry_top) ? bathymetry_bottom : bathymetry_top;
         else
-            return bathymetry_y_max + (bathymetry_y_step / 2);
+            return (bathymetry_bottom > bathymetry_top) ? bathymetry_bottom : bathymetry_top;
     };
 };
 

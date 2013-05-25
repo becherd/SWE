@@ -20,7 +20,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
         /// Set Up called before each test case (create scenario)
         void setUp() {
             // Create scenario
-            // Note: {BATHYMETRY,DISPLACEMENT}_FILE env variables must be passed when running the tests
+            // Note: {BATHYMETRY,DISPLACEMENT}_FILE env variables must be passed when compiling the tests
             scenario = new SWE_TsunamiScenario(std::string(BATHYMETRY_FILE), std::string(DISPLACEMENT_FILE));
         }
         
@@ -34,7 +34,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
          * Test correctness of
          *     - dimension IDs
          *     - variable lengths
-         *     - minimum and maximum value in x and y domain
+         *     - left, right, bottom and top boundary
          *     - step with between cells in x and y domain
          * for both bathymetry and displacement files
          */
@@ -58,20 +58,81 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
             TSM_ASSERT_EQUALS("Displacement y-Dimension Length", scenario->displacement_y_len, 10);
             
             // Check min/max/step width for bathymetry
-            TSM_ASSERT_EQUALS("Bathymetry x-Dimension Min", scenario->bathymetry_x_min, -245);
-            TSM_ASSERT_EQUALS("Bathymetry x-Dimension Max", scenario->bathymetry_x_max, 745);
+            TSM_ASSERT_EQUALS("Bathymetry x-Dimension Left", scenario->bathymetry_left, -250);
+            TSM_ASSERT_EQUALS("Bathymetry x-Dimension Right", scenario->bathymetry_right, 750);
             TSM_ASSERT_EQUALS("Bathymetry x-Dimension Step", scenario->bathymetry_x_step, 10);
-            TSM_ASSERT_EQUALS("Bathymetry y-Dimension Min", scenario->bathymetry_y_min, -1225);
-            TSM_ASSERT_EQUALS("Bathymetry y-Dimension Max", scenario->bathymetry_y_max, 1225);
+            TSM_ASSERT_EQUALS("Bathymetry y-Dimension Bottom", scenario->bathymetry_bottom, -1250);
+            TSM_ASSERT_EQUALS("Bathymetry y-Dimension Top", scenario->bathymetry_top, 1250);
             TSM_ASSERT_EQUALS("Bathymetry y-Dimension Step", scenario->bathymetry_y_step, 50);
             
             // Check min/max/step width for displacement
-            TSM_ASSERT_EQUALS("Displacement x-Dimension Min", scenario->displacement_x_min, 155);
-            TSM_ASSERT_EQUALS("Displacement x-Dimension Max", scenario->displacement_x_max, 345);
+            TSM_ASSERT_EQUALS("Displacement x-Dimension Left", scenario->displacement_left, 150);
+            TSM_ASSERT_EQUALS("Displacement x-Dimension Right", scenario->displacement_right, 350);
             TSM_ASSERT_EQUALS("Displacement x-Dimension Step", scenario->displacement_x_step, 10);
-            TSM_ASSERT_EQUALS("Displacement y-Dimension Min", scenario->displacement_y_min, -450);
-            TSM_ASSERT_EQUALS("Displacement y-Dimension Max", scenario->displacement_y_max, 450);
+            TSM_ASSERT_EQUALS("Displacement y-Dimension Bottom", scenario->displacement_bottom, -500);
+            TSM_ASSERT_EQUALS("Displacement y-Dimension Top", scenario->displacement_top, 500);
             TSM_ASSERT_EQUALS("Displacement y-Dimension Step", scenario->displacement_y_step, 100);
+        }
+        
+        /// Test correctness of index calculation in a single dimension (e.g. x or y dimension)
+        void testGetIndex1D() {
+            /// Test increasing dimension values
+            size_t len = 6;
+            float step, origin;
+            
+            // Increasing order, uniform cell spacing
+            float dim1[] = {-25.0, -15.0, -5.0, 5.0, 15.0, 25.0};
+            step = 10.0;
+            origin = -30.0;
+            TSM_ASSERT_EQUALS("[INC|UNIFORM] Round up", scenario->getIndex1D(2.5, origin, step, dim1, len), 3);
+            TSM_ASSERT_EQUALS("[INC|UNIFORM] Round down", scenario->getIndex1D(-2.5, origin, step, dim1, len), 2);
+            TSM_ASSERT_EQUALS("[INC|UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim1, len), 5);
+            TSM_ASSERT_EQUALS("[INC|UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim1, len), 0);
+            TSM_ASSERT_EQUALS("[INC|UNIFORM] Edge", scenario->getIndex1D(0.0, origin, step, dim1, len), 3);
+            
+            // Decreasing order, uniform cell spacing
+            float dim2[] = {25.0, 15.0, 5.0, -5.0, -15.0, -25.0};
+            step = -10.0;
+            origin = 30.0;
+            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Round up", scenario->getIndex1D(2.5, origin, step, dim2, len), 2);
+            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Round down", scenario->getIndex1D(-2.5, origin, step, dim2, len), 3);
+            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim2, len), 0);
+            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim2, len), 5);
+            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Edge", scenario->getIndex1D(0.0, origin, step, dim2, len), 2);
+            
+            // Increasing order, non-uniform cell spacing
+            float dim3[] = {-25.0, -10.0, -3.25, 3.25, 10.0, 25.0};
+            step = 10.0;
+            origin = -30.0;
+            TSM_ASSERT_EQUALS("[INC|NON-UNIFORM] Round up", scenario->getIndex1D(19.5, origin, step, dim3, len), 5);
+            TSM_ASSERT_EQUALS("[INC|NON-UNIFORM] Round down", scenario->getIndex1D(-19.5, origin, step, dim3, len), 0);
+            TSM_ASSERT_EQUALS("[INC|NON-UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim3, len), 5);
+            TSM_ASSERT_EQUALS("[INC|NON-UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim3, len), 0);
+            TSM_ASSERT_EQUALS("[INC|NON-UNIFORM] Edge", scenario->getIndex1D(17.5, origin, step, dim3, len), 4);
+            
+            // Decreasing order, non-uniform cell spacing
+            float dim4[] = {25.0, 10.0, 3.25, -3.25, -10.0, -25.0};
+            step = -10.0;
+            origin = 30.0;
+            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Round up", scenario->getIndex1D(19.5, origin, step, dim4, len), 0);
+            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Round down", scenario->getIndex1D(-19.5, origin, step, dim4, len), 5);
+            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim4, len), 0);
+            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim4, len), 5);
+            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Edge", scenario->getIndex1D(17.5, origin, step, dim4, len), 0);
+        }
+        
+        /// Test correctness of the binary index search algorithm to handle non-uniformly spaced input data cells
+        void testBinaryIndexSearch() {
+            float values[] = {-100.0, -90.0, -50.0, -20.0, 0.0, 30.0, 45.0, 75.0, 100.0};
+            size_t len = 9;
+            
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(-120.0, values, len, 0, len-1), 0);
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(120.0, values, len, 0, len-1), 8);
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(-99.0, values, len, 0, len-1), 0);
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(-91.0, values, len, 0, len-1), 1);
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(-70.0, values, len, 0, len-1), 1);
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(80.0, values, len, 0, len-1), 7);
+            TS_ASSERT_EQUALS(scenario->binaryIndexSearch(20.0, values, len, 0, len-1), 5);
         }
         
         /// Test correct positions of boundaries (= computational domain size)
@@ -82,7 +143,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
             TSM_ASSERT_EQUALS("Top", scenario->getBoundaryPos(BND_TOP), 1250);
         }
         
-        /// Test correctness of boundary types (WALL or OUTFLOW)
+        /// Test correctness of boundary type setting and reading
         void testGetBoundaryType() {
             // Set boundary types
             BoundaryType boundaryTypes[] = {WALL, OUTFLOW, OUTFLOW, WALL};

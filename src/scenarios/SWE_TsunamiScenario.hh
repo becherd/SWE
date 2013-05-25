@@ -234,7 +234,12 @@ protected:
         float relativePosition = position - origin;
         
         // Let's assume all the cells are spaced equally
-        if(relativePosition >= tolerance) {
+        // We need to check the signs of the relative position and the step width
+        // If both have the same sign, the relative position has an index greater than or equal zero
+        // E.g. a negative step width implies a decreasing order of values
+        // Therefore a positive relative position means the position is higher than
+        // the left (=highest valued) boundary and therefore does not lie between the boundaries
+        if(std::signbit(relativePosition) == std::signbit(stepWidth)) {
             index = static_cast <size_t> (std::floor(relativePosition / stepWidth));
             
             // make sure the index stays inside variable index bounds
@@ -244,10 +249,12 @@ protected:
             // requested coordinate is below our lower domain bound
             index = 0;
         }
-        
+#ifdef DISABLE_NONUNIFORM_NETCDF_CELLS
+        return index;
+#else
         // Let's validate the assumption of equally spaced cells
         float distance = std::fabs(position - values[index]);
-        int indexIsCorrect = 1;
+        bool indexIsCorrect = true;
         if(index >= 1)
             indexIsCorrect = indexIsCorrect && (distance <= std::fabs(position - values[index-1]));
         if(index <= length-2)
@@ -259,6 +266,7 @@ protected:
         // Oh, the assumption of equally spaced cells seems to hold not to be true :(
         // Lets do a binary search over all the values to find the nearest cell index
         return binaryIndexSearch(position, values, length, 0, length-1);
+#endif
     }
     
     /// Perform an extended binary search on dimension data to find the nearest cell

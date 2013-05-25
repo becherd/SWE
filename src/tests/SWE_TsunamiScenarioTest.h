@@ -85,6 +85,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
             step = 10.0;
             origin = -30.0;
             TSM_ASSERT_EQUALS("[INC|UNIFORM] Round up", scenario->getIndex1D(2.5, origin, step, dim1, len), 3);
+            TSM_ASSERT_EQUALS("[INC|UNIFORM] Round down", scenario->getIndex1D(19.5, origin, step, dim1, len), 4);
             TSM_ASSERT_EQUALS("[INC|UNIFORM] Round down", scenario->getIndex1D(-2.5, origin, step, dim1, len), 2);
             TSM_ASSERT_EQUALS("[INC|UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim1, len), 5);
             TSM_ASSERT_EQUALS("[INC|UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim1, len), 0);
@@ -98,7 +99,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
             TSM_ASSERT_EQUALS("[DEC|UNIFORM] Round down", scenario->getIndex1D(-2.5, origin, step, dim2, len), 3);
             TSM_ASSERT_EQUALS("[DEC|UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim2, len), 0);
             TSM_ASSERT_EQUALS("[DEC|UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim2, len), 5);
-            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Edge", scenario->getIndex1D(0.0, origin, step, dim2, len), 2);
+            TSM_ASSERT_EQUALS("[DEC|UNIFORM] Edge", scenario->getIndex1D(0.0, origin, step, dim2, len), 3);
             
             // Increasing order, non-uniform cell spacing
             float dim3[] = {-25.0, -10.0, -3.25, 3.25, 10.0, 25.0};
@@ -118,7 +119,7 @@ class SWE_TsunamiScenarioTest : public CxxTest::TestSuite {
             TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Round down", scenario->getIndex1D(-19.5, origin, step, dim4, len), 5);
             TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Above upper", scenario->getIndex1D(32.5, origin, step, dim4, len), 0);
             TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Below lower", scenario->getIndex1D(-35.5, origin, step, dim4, len), 5);
-            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Edge", scenario->getIndex1D(17.5, origin, step, dim4, len), 0);
+            TSM_ASSERT_EQUALS("[DEC|NON-UNIFORM] Edge", scenario->getIndex1D(17.5, origin, step, dim4, len), 1);
         }
         
         /// Test correctness of the binary index search algorithm to handle non-uniformly spaced input data cells

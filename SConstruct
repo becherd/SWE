@@ -87,6 +87,8 @@ vars.AddVariables(
 
   BoolVariable( 'writeNetCDF', 'write output in the netCDF-format', False ),
 
+  BoolVariable( 'disableNonUniformNetCDFCells', 'always assume netcdf data cells are uniformly spaced', False ),
+
   BoolVariable( 'asagi', 'use ASAGI', False ),
 
   PathVariable( 'asagiInputDir', 'location of netcdf input files', '', PathVariable.PathAccept ),
@@ -306,6 +308,10 @@ if env['xmlRuntime'] == True: #TODO
   if 'libxmlDir' in env:
     env.Append(CPPPATH=[env['libxmlDir']+'/include/libxml2'])
     env.Append(LIBPATH=[env['libxmlDir']+'/lib'])
+
+# Disables the check and search for non-uniformly spaced cells
+if env['disableNonUniformNetCDFCells'] == True:
+  env.Append(CPPDEFINES=['DISABLE_NONUNIFORM_NETCDF_CELLS'])
 
 #
 # setup the program name and the build directory

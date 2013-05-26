@@ -203,33 +203,45 @@ int main( int argc, char** argv ) {
     }
     
     if(showUsage) {
-        // TODO: refactor usage message
-        std::cout << "Usage: ./SWE_<compiler>_<build>_none_dimsplit [OPTIONS]" << std::endl;
-        std::cout << "  Available Options:" << std::endl;
-        std::cout << "  REQUIRED:" << std::endl;
-        std::cout << "    -x <num>      Number of grid cells in x-direction" << std::endl;
-        std::cout << "    -y <num>      Number of grid cells in y-direction" << std::endl;
-        std::cout << "    -o <file>     Base name of the output file(s)" << std::endl;
-        std::cout << "  OPTIONAL:" << std::endl;
-        std::cout << "    -i <file>     Name of bathymetry data file" << std::endl;
-        std::cout << "    -d <file>     Name of displacement data file" << std::endl;
-        std::cout << "    -c <file>     Name of checkpoint file to continue simulation" << std::endl;
-        std::cout << "    -t <float>    Simulation time in seconds" << std::endl;
-        std::cout << "    -n <num>      Number of checkpoints to be written" << std::endl;
-        std::cout << "    -s <scenario> Name of artificial scenario" << std::endl;
-        std::cout << "                  Scenarios: 'artificialtsunami', 'partialdambreak'" << std::endl;
-        std::cout << "    -b <code>     Boundary Conditions" << std::endl;
-        std::cout << "                  Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
-        std::cout << "                    One char: Option for ALL boundaries" << std::endl;
-        std::cout << "                    Two chars: Options for left/right and top/bottom boundaries" << std::endl;
-        std::cout << "                    Four chars: Options for left, right, bottom, top boundaries" << std::endl;
+        std::cout << "Usage:" << std::endl;
+        std::cout << "Simulating a tsunami with bathymetry and displacement input:" << std::endl;
+        std::cout << "    ./SWE_<opt> -i <bathymetryfile> -d <displacementfile> [OPTIONS]" << std::endl;
+        std::cout << "Resuming a crashed simulation from checkpoint file:" << std::endl;
+        std::cout << "    ./SWE_<opt> -c <checkpointfile> [-o <outputfile>]" << std::endl;
+        std::cout << "Simulating an artificial scenario:" << std::endl;
+        std::cout << "    ./SWE_<opt> -s <scenarioname> [OPTIONS]" << std::endl;
+        std::cout << "" << std::endl;
+        std::cout << "Options:" << std::endl;
+        std::cout << "    -o <filename>   The output file base name" << std::endl;
+        std::cout << "        Note: If the file already exists it is assumed to be a checkpointfile" << std::endl;
+        std::cout << "        from which to resume simulation. Input options are ignored then." << std::endl;
+        std::cout << "    -x <num>        The number of cells in x-direction" << std::endl;
+        std::cout << "    -y <num>        The number of cells in y-direction" << std::endl;
+        std::cout << "    -n <num>        Number of checkpoints to be written" << std::endl;
+        std::cout << "    -t <time>       Total simulation time" << std::endl;
+        std::cout << "    -b <code>       Boundary Conditions" << std::endl;
+        std::cout << "                    Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
+        std::cout << "                      One char: Option for ALL boundaries" << std::endl;
+        std::cout << "                      Two chars: Options for left/right and top/bottom boundaries" << std::endl;
+        std::cout << "                      Four chars: Options for left, right, bottom, top boundaries" << std::endl;
+        std::cout << "    -i <filename>   Name of bathymetry data file" << std::endl;
+        std::cout << "    -d <filename>   Name of displacement data file" << std::endl;
+        std::cout << "    -c <filename>   Name of checkpointfile" << std::endl;
+        std::cout << "    -s <scenario>   Name of artificial scenario" << std::endl;
+        std::cout << "                    Scenarios: 'artificialtsunami', 'partialdambreak'" << std::endl;
+        std::cout << "" << std::endl;
+        std::cout << "Notes when using a checkpointfile:" << std::endl;
+        std::cout << "    -x, -y, -n, -t, -b, -i, -d, -s are ignored (values are read from checkpointfile)" << std::endl;
+        std::cout << "    An output file (-o) can be specified. In that case, the checkpointfile" << std::endl;
+        std::cout << "    is copied to that location and output is appended to the output file." << std::endl;
+        std::cout << "    If no output file is specified, output is appended to the checkpointfile." << std::endl;
         std::cout << "" << std::endl;
         std::cout << "Example: " << std::endl; 
         std::cout << "./SWE_<compiler>_<build>_none_dimsplit -x 100 -y 200 -o out -i b.nc -d d.nc -n 50 -b owwo" << std::endl;
         std::cout << "    will simulate a tsunami scenario using bathymetry from 'b.nc' and displacements ";
         std::cout << "from 'd.nc' on a grid of size 100 x 200 using outflow conditions for left and ";
         std::cout << "top boundary and wall conditions for right and bottom boundary, writing 50 checkpoints ";
-        std::cout << "to out_<num>.<ext>" << std::endl;
+        std::cout << "to out_<num>.nc" << std::endl;
         
         return 0;
     }

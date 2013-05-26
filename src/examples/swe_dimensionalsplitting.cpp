@@ -250,7 +250,7 @@ int main( int argc, char** argv ) {
     std::string l_outputFileName = generateBaseFileName(l_baseName,0,0);
     
 #ifdef WRITENETCDF
-    if(l_scenarioName == SCENARIO_TSUNAMI) {
+    if(l_scenarioName != SCENARIO_CHECKPOINT_TSUNAMI) {
         // This is a tsunami scenario, check if the output file (with .nc-extension) exists
         // In that case switch to checkpoint scenario
         int ncOutputFile;

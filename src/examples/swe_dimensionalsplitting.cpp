@@ -385,7 +385,7 @@ int main( int argc, char** argv ) {
     
 #ifdef WRITENETCDF
     if(l_scenarioName == SCENARIO_CHECKPOINT_TSUNAMI) {
-        if(l_outputFileName.empty()) {
+        if(l_baseName.empty()) {
             // If there is no output file name given, use the checkpoint file
             l_outputFileName = l_checkpointFileName;
         } else if(l_outputFileName.compare(l_checkpointFileName) != 0) {

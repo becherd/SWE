@@ -77,6 +77,7 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
         status = nc_inq_unlimdim(dataFile, &l_timeDim);
         status = nc_inq_dimid(dataFile, "x", &l_xDim);
         status = nc_inq_dimid(dataFile, "y", &l_yDim);
+        status = nc_inq_varid(dataFile, "time", &timeVar);
         status = nc_inq_varid(dataFile, "x", &l_xVar);
         status = nc_inq_varid(dataFile, "y", &l_yVar);
         status = nc_inq_varid(dataFile, "h", &hVar);
@@ -88,6 +89,9 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
         size_t l_xLen, l_yLen;
         status = nc_inq_dimlen(dataFile, l_xDim, &l_xLen);
         status = nc_inq_dimlen(dataFile, l_yDim, &l_yLen);
+        
+        // Set next timeStep
+        status = nc_inq_dimlen(dataFile, l_timeDim, &timeStep);
         
         // Check actual dimensions in file against supplied dimensions
         assert(l_xLen == nX); assert(l_yLen == nY);

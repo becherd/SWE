@@ -332,7 +332,8 @@ int main( int argc, char** argv ) {
     
     //! checkpoint counter
     int l_checkpoint = 1;
-    
+
+#ifdef WRITENETCDF
     if(l_scenarioName == SCENARIO_CHECKPOINT_TSUNAMI) {
         // read total number of checkpoints
         l_numberOfCheckPoints = ((SWE_CheckpointTsunamiScenario *)l_scenario)->getNumberOfCheckpoints();
@@ -341,6 +342,7 @@ int main( int argc, char** argv ) {
         ((SWE_CheckpointTsunamiScenario *)l_scenario)->getLastCheckpoint(l_checkpoint, l_t);
         l_checkpoint++;
     }
+#endif
     
     // read actual boundary types (command line merged with scenario)
     l_boundaryTypes[BND_LEFT] = l_scenario->getBoundaryType(BND_LEFT);

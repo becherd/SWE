@@ -44,8 +44,8 @@ int main( int argc, char** argv ) {
     
     //! type of boundary conditions at LEFT, RIGHT, TOP, and BOTTOM boundary
     BoundaryType l_boundaryTypes[4];
-    //! whether to override the scenario-defined conditions (1) or not (0)
-    int l_overwriteBoundaryTypes = 0;
+    //! whether to override the scenario-defined conditions (true) or not (false)
+    bool l_overwriteBoundaryTypes = false;
     
     //! List of defined scenarios
     typedef enum {
@@ -113,6 +113,7 @@ int main( int argc, char** argv ) {
                 break;
             case 'b':
                 optstr = std::string(optarg);
+                l_overwriteBoundaryTypes = true;
                 switch(optstr.length()) {
                     case 1:
                         // one option for all boundaries

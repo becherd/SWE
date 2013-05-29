@@ -534,7 +534,8 @@ class tools::Logger {
                                                 std::string i_averageMessage = "on average per cell per iteration")
     {
         if (processRank == 0) {
-            timeCout() << indentation << (cpuTime / (i_iterations * i_cells))
+            unsigned long totalCells = (unsigned long)i_iterations * (unsigned long)i_cells;
+            timeCout() << indentation << (cpuTime / totalCells)
    			<< " seconds " << i_averageMessage << std::endl;
         }
     }

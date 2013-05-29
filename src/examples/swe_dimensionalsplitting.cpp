@@ -497,5 +497,8 @@ int main( int argc, char** argv ) {
     // printer iteration counter
     tools::Logger::logger.printIterationsDone(l_iterations);
     
+    // print average time per cell per iteration
+    tools::Logger::logger.printAverageCPUTimePerCellPerIteration(l_iterations, l_nX*(l_nY+2)); 
+    
     return 0;
 }

@@ -521,6 +521,23 @@ class tools::Logger {
     			<< ' ' << i_iterationMessage << std::endl;
     	}
     }
+    
+    /**
+     * Print the average amount of CPU time per cell per iteration
+     *
+     * @param i_iterations Number of iterations done
+     * @param i_cells Number of cells in the grid
+     * @param i_averageMessage Average time message
+     */
+    void printAverageCPUTimePerCellPerIteration(unsigned int i_iterations,
+                                                unsigned int i_cells,
+                                                std::string i_averageMessage = "on average per cell per iteration")
+    {
+        if (processRank == 0) {
+            timeCout() << indentation << (cpuTime / (i_iterations * i_cells))
+   			<< " seconds " << i_averageMessage << std::endl;
+        }
+    }
 
   public:
     /** The logger all classes shoud use */

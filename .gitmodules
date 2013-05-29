@@ -4,3 +4,6 @@
 [submodule "submodules/fwave_solver"]
 	path = submodules/fwave_solver
 	url = https://github.com/mherb/tsunami-lab
+[submodule "submodules/cxxtest"]
+	path = submodules/cxxtest
+	url = https://github.com/CxxTest/cxxtest.git

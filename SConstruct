@@ -120,7 +120,8 @@ vars.AddVariables(
 # set environment
 env = Environment(ENV = {'PATH': os.environ['PATH']},
         variables=vars,
-        tools = ['default', 'cxxtest'])
+        toolpath=['#submodules/cxxtest/build_tools/SCons'],
+        tools = ['default', ('cxxtest', {'CXXTEST_INSTALL_DIR':'#/submodules/cxxtest'})])
 
 # generate help text
 Help(vars.GenerateHelpText(env))

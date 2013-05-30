@@ -69,7 +69,7 @@ vars.AddVariables(
               ),
 
   EnumVariable( 'compileMode', 'mode of the compilation', 'release',
-                allowed_values=('debug', 'release')
+                allowed_values=('debug', 'analysis', 'release')
               ),
 
   EnumVariable( 'parallelization', 'level of parallelization', 'none',
@@ -100,11 +100,15 @@ vars.AddVariables(
   BoolVariable( 'vectorize', 'add pragmas to help vectorization (release only)', False ),
                   
   BoolVariable( 'showVectorization', 'show loop vectorization (Intel compiler only)', False ),
+  
+  BoolVariable( 'showOptimization', 'save optimization report in build dir (Intel compiler only)', False ),
 
   EnumVariable( 'platform', 'compile for a specific platform (Intel compiler only)', 'default',
                 allowed_values=('default', 'mic' )
               ),
 
+  BoolVariable( 'disableUnitTests', 'do not build unit test targets', False ),
+  
   BoolVariable( 'xmlRuntime', 'use a xml-file for runtime parameters', False )
 )
 
@@ -193,6 +197,14 @@ elif env['compileMode'] == 'release':
 
   elif env['compiler'] == 'intel':
     env.Append(CCFLAGS=['-O2'])
+elif env['compileMode'] == 'analysis':
+  env.Append(CPPDEFINES=['NDEBUG'])
+  env.Append(CCFLAGS=['-fno-inline'])
+  if env['compiler'] == 'gnu':
+    env.Append(CCFLAGS=['-O3', '-g','-mtune=native'])
+
+  elif env['compiler'] == 'intel':
+    env.Append(CCFLAGS=['-O2', '-g'])
     
 # Other compiler flags (for all compilers)
 env.Append(CCFLAGS=['-fstrict-aliasing', '-fargument-noalias'])
@@ -203,7 +215,10 @@ if env['compileMode'] == 'release' and env['vectorize']:
   if env['compiler'] == 'intel':
     env.Append(CCFLAGS=['-xHost'])
 if env['compiler'] == 'intel' and env['showVectorization']:
-  env.Append(CCFLAGS=['-vec-report2'])
+  env.Append(CCFLAGS=['-vec-report3'])
+if env['compiler'] == 'intel' and env['showOptimization']:
+  print "Intel Optimization Report can be found in " + env['buildDir'] + '/opt-report.txt'
+  env.Append(CCFLAGS=['-opt-report', '-opt-report-file=' + env['buildDir'] + '/opt-report.txt'])
   
 # Platform
 if env['compiler'] == 'intel' and env['platform'] == 'mic':

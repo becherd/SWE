@@ -104,26 +104,27 @@ else:
   print >> sys.stderr, '** The selected configuration is not implemented.'
   Exit(1)
 
-env.CxxTest([
+if(env['disableUnitTests'] == False):
+  env.CxxTest([
     'tests/SWE_DimensionalSplittingTest.h',
     env.Object('blocks/SWE_DimensionalSplitting.cpp'),
     env.Object('blocks/SWE_Block.cpp')
-])
+  ])
 
-if env['writeNetCDF'] == True:
-  env.CxxTest(['tests/SWE_TsunamiScenarioTest.h'],
-    CPPDEFINES=[
-      ('BATHYMETRY_FILE', '\\"' + File('#src/tests/test_bathymetry.nc').srcnode().abspath + '\\"'),
-      ('DISPLACEMENT_FILE', '\\"' + File('#src/tests/test_displacement.nc').srcnode().abspath + '\\"')
-    ]
-  )
-  env.CxxTest(['tests/SWE_CheckpointTsunamiScenarioTest.h'],
-    CPPDEFINES=[
-      ('CHECKPOINT_FILE', '\\"' + File('#src/tests/test_checkpoint.nc').srcnode().abspath + '\\"')
-    ]
-  )
-else:
-  print >> sys.stderr, 'WARNING: TsunamiScenarioTest cannot be run because NetCDF support is missing'
+  if env['writeNetCDF'] == True:
+    env.CxxTest(['tests/SWE_TsunamiScenarioTest.h'],
+      CPPDEFINES=[
+        ('BATHYMETRY_FILE', '\\"' + File('#src/tests/test_bathymetry.nc').srcnode().abspath + '\\"'),
+        ('DISPLACEMENT_FILE', '\\"' + File('#src/tests/test_displacement.nc').srcnode().abspath + '\\"')
+      ]
+    )
+    env.CxxTest(['tests/SWE_CheckpointTsunamiScenarioTest.h'],
+      CPPDEFINES=[
+        ('CHECKPOINT_FILE', '\\"' + File('#src/tests/test_checkpoint.nc').srcnode().abspath + '\\"')
+      ]
+    )
+  else:
+    print >> sys.stderr, 'WARNING: TsunamiScenarioTest cannot be run because NetCDF support is missing'
     
 # CPU compilation for sure
 for i in sourceFiles:

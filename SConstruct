@@ -118,7 +118,7 @@ vars.AddVariables(
 )
 
 # set environment
-env = Environment(ENV = {'PATH': os.environ['PATH'], 'LD_LIBRARY_PATH': os.environ['LD_LIBRARY_PATH']},
+env = Environment(ENV = {'PATH': os.environ['PATH'], 'LD_LIBRARY_PATH': os.getenv('LD_LIBRARY_PATH')},
         variables=vars,
         toolpath=['#submodules/cxxtest/build_tools/SCons'],
         tools = ['default', ('cxxtest', {'CXXTEST_INSTALL_DIR':'#/submodules/cxxtest'})])

@@ -98,6 +98,8 @@ if env['parallelization'] in ['none', 'cuda']:
   else:
    print >> sys.stderr, '** The selected configuration is not implemented.'
    Exit(1)
+elif env['parallelization'] == 'openmp':
+    sourceFiles.append( ['examples/swe_dimensionalsplitting.cpp'] )
 elif env['parallelization'] in ['mpi_with_cuda', 'mpi']:
     sourceFiles.append( ['examples/swe_mpi.cpp'] )
 else:

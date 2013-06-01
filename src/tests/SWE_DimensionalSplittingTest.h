@@ -207,7 +207,7 @@ class SWE_DimensionalSplittingTest : public CxxTest::TestSuite {
         const static float REL_TOLERANCE = 0.025;
         
         /** Number of cells */
-        const static unsigned int SIZE = 50;
+        const static int SIZE = 50;
         
         /** Number of timesteps to compute */
         const static unsigned int TIMESTEPS = 50;

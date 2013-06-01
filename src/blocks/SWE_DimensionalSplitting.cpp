@@ -5,8 +5,7 @@
 
 #include "SWE_DimensionalSplitting.hh"
 #include "tools/help.hh"
-
-
+#include <omp.h>
 
 SWE_DimensionalSplitting::SWE_DimensionalSplitting(int l_nx, int l_ny,
     float l_dx, float l_dy):
@@ -25,7 +24,7 @@ SWE_DimensionalSplitting::SWE_DimensionalSplitting(int l_nx, int l_ny,
 
 void SWE_DimensionalSplitting::computeNumericalFluxes()
 {
-    float maxWaveSpeed, maxEdgeSpeed = 0.f;
+    float maxWaveSpeed = 0.f;
     
     /**
      * **X-Sweep**
@@ -36,7 +35,18 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
      * while NetUpdatesRight[i][j] denotes the right-going update from cell i
      * to cell i+1 in row j
      */
+#ifdef USEOPENMP
+#pragma omp parallel for
+#endif
     for(int j = 0; j < ny+2; j++) {
+        float maxEdgeSpeed = 0.f;
+        float loopMax = 0.f;
+        
+#ifdef USEOPENMP
+        // create solver for this thread
+        solver::FWave<float> dimensionalSplittingSolver;
+#endif
+        
         for(int i = 0; i < nx+1; i++) {
             dimensionalSplittingSolver.computeNetUpdates( h[i][j], h[i+1][j],
                     hu[i][j], hu[i+1][j],
@@ -44,15 +54,24 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
                     hNetUpdatesLeft[i][j], hNetUpdatesRight[i][j],
                     huNetUpdatesLeft[i][j], huNetUpdatesRight[i][j],
                     maxEdgeSpeed );
-            
             // Update maxWaveSpeed (x direction)
-            // maxWaveSpeed is likely to be greater than maxEdgeSpeed
-            if (maxEdgeSpeed < maxWaveSpeed) {
+            // loopMax is likely to be greater than maxEdgeSpeed
+            if (maxEdgeSpeed < loopMax) {
                 // nothing to do
             } else {
-                maxWaveSpeed = maxEdgeSpeed;
+                loopMax = maxEdgeSpeed;
             }
         }
+#ifdef USEOPENMP
+#pragma omp critical
+#endif
+{
+        if(loopMax < maxWaveSpeed) {
+            // nothing
+        } else {
+            maxWaveSpeed = loopMax;
+        }
+}        
     }
     
     assert(maxWaveSpeed > 0.0);
@@ -72,6 +91,9 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
      * in hStar, similarly hStar contains two cells less than h in horizontal (x)
      * direction 
      */
+#ifdef USEOPENMP
+#pragma omp parallel for
+#endif
     for (int j = 0; j < ny+2; j++) {
         for (int i = 0; i < nx; i++) {
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
@@ -94,7 +116,19 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
      * in the (i+1)-th column , while NetUpdatesAbove[i][j] denotes the updates going from cell 
      * j to j+1 in the (i+1)-th column of the block
      */
+    maxWaveSpeed = 0.0;
+#ifdef USEOPENMP
+#pragma omp parallel for
+#endif
     for(int i = 0; i < nx; i++) {
+        float maxEdgeSpeed = 0.f;
+#ifndef NDEBUG
+        float loopMax = 0.0;
+#endif
+#ifdef USEOPENMP
+        // create solver for this thread
+        solver::FWave<float> dimensionalSplittingSolver;
+#endif
         for(int j = 0; j < ny+1; j++) {
             dimensionalSplittingSolver.computeNetUpdates( hStar[i][j], hStar[i][j+1],
                     hv[i+1][j], hv[i+1][j+1],
@@ -104,14 +138,27 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
                     maxEdgeSpeed );
 #ifndef NDEBUG
             // Update maxWaveSpeed (y direction)
-            // maxWaveSpeed is likely to be greater than maxEdgeSpeed
-            if (maxEdgeSpeed < maxWaveSpeed) {
+            // loopMax is likely to be greater than maxEdgeSpeed
+            if(maxEdgeSpeed < loopMax) {
                 // nothing to do
             } else {
-                maxWaveSpeed = maxEdgeSpeed;
+                loopMax = maxEdgeSpeed;
             }
 #endif
         }
+        
+#ifndef NDEBUG
+#ifdef USEOPENMP
+#pragma omp critical
+#endif
+{
+    if(loopMax < maxWaveSpeed) {
+        // nothing
+    } else {
+        maxWaveSpeed = loopMax;
+    }
+}
+#endif
     }
     
 #ifndef NDEBUG
@@ -136,6 +183,9 @@ void SWE_DimensionalSplitting::updateUnknowns(float dt)
      * and compute the resulting height, horizontal and vertical momentum
      * using the left, right, above and below net updates
      */
+#ifdef USEOPENMP
+#pragma omp parallel for
+#endif
     for (int i = 0; i < nx; i++) {
         for (int j = 0; j < ny; j++) {
             // Update heights

@@ -73,7 +73,7 @@ vars.AddVariables(
               ),
 
   EnumVariable( 'parallelization', 'level of parallelization', 'none',
-                allowed_values=('none', 'cuda', 'mpi_with_cuda', 'mpi')
+                allowed_values=('none', 'openmp', 'cuda', 'mpi_with_cuda', 'mpi')
               ),
 
   EnumVariable( 'computeCapability', 'optional architecture/compute capability of the CUDA card', 'sm_20',
@@ -153,6 +153,11 @@ if env['parallelization'] != 'cuda' and env['openGL'] == True:
   print >> sys.stderr, '** The parallelization "'+env['parallelization']+'" does not support OpenGL visualization (CUDA only).'
   Exit(3)
 
+# OpenMP parallelization for DimensionalSplitting
+if env['parallelization'] == 'openmp' and env['solver'] != 'dimsplit':
+  print >> sys.stderr, '** The "'+env['solver']+'" solver is not supported in OpenMP.'
+  Exit(3)
+
 #
 # precompiler, compiler and linker flags
 #
@@ -170,6 +175,12 @@ if env['parallelization'] in ['mpi', 'mpi_with_cuda']:
     envVars = ['OMPI_CXX', 'MPICH_CXX']
     for var in envVars:
       env['ENV'][var] = 'icpc'
+elif env['parallelization'] == 'openmp':
+    env.Append(CPPDEFINES=['USEOPENMP'])
+    if env['compiler'] == 'intel':
+        env.Append(CPPFLAGS=['-openmp'], LINKFLAGS=['-openmp'])
+    else:
+        env.Append(CPPFLAGS=['-fopenmp'], LINKFLAGS=['-fopenmp'])
 else:
   if env['compiler'] == 'intel':
     env['CXX'] = 'icpc'

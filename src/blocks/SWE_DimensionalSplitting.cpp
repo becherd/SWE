@@ -44,9 +44,14 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
                     hNetUpdatesLeft[i][j], hNetUpdatesRight[i][j],
                     huNetUpdatesLeft[i][j], huNetUpdatesRight[i][j],
                     maxEdgeSpeed );
+            
             // Update maxWaveSpeed (x direction)
-            if (maxEdgeSpeed > maxWaveSpeed)
+            // maxWaveSpeed is likely to be greater than maxEdgeSpeed
+            if (maxEdgeSpeed < maxWaveSpeed) {
+                // nothing to do
+            } else {
                 maxWaveSpeed = maxEdgeSpeed;
+            }
         }
     }
     
@@ -72,8 +77,11 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
             
             // catch negative heights
-            if(hStar[i][j] < 0.0)
+            if(hStar[i][j] > 0.0) {
+                // nothing to do
+            } else {
                 hStar[i][j] = 0.0;
+            }
         }
     }
     
@@ -94,13 +102,19 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
                     hNetUpdatesBelow[i][j], hNetUpdatesAbove[i][j],
                     hvNetUpdatesBelow[i][j], hvNetUpdatesAbove[i][j],
                     maxEdgeSpeed );
+#ifndef NDEBUG
             // Update maxWaveSpeed (y direction)
-            if (maxEdgeSpeed > maxWaveSpeed)
+            // maxWaveSpeed is likely to be greater than maxEdgeSpeed
+            if (maxEdgeSpeed < maxWaveSpeed) {
+                // nothing to do
+            } else {
                 maxWaveSpeed = maxEdgeSpeed;
+            }
+#endif
         }
     }
     
-  #ifndef NDEBUG
+#ifndef NDEBUG
     assert(maxWaveSpeed > 0.0);
     
     // Check if the CFL condition is also satisfied for y direction
@@ -112,8 +126,7 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
         std::cerr << "WARNING: CFL condition is not satisfied in y-sweep: "
                   << maxTimestepY << " < " << maxTimestep << std::endl;
     }
-  #endif
-
+#endif
 }
 
 void SWE_DimensionalSplitting::updateUnknowns(float dt)
@@ -133,7 +146,9 @@ void SWE_DimensionalSplitting::updateUnknowns(float dt)
             hv[i+1][j+1] -= dt/dy * (hvNetUpdatesBelow[i][j+1] + hvNetUpdatesAbove[i][j]);
             
             // catch negative heights
-            if(h[i+1][j+1] < 0.0) {
+            if(h[i+1][j+1] > 0.0) {
+                // nothing to do
+            } else {
                 h[i+1][j+1] = 0.0;
                 hu[i+1][j+1] = 0.0;
                 hv[i+1][j+1] = 0.0;

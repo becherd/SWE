@@ -101,7 +101,7 @@ vars.AddVariables(
                   
   BoolVariable( 'showVectorization', 'show loop vectorization (Intel compiler only)', False ),
   
-  BoolVariable( 'showOptimization', 'save optimization report in build dir (Intel compiler only)', False ),
+  BoolVariable( 'showOptimization', 'show optimization report (Intel compiler only)', False ),
 
   EnumVariable( 'platform', 'compile for a specific platform (Intel compiler only)', 'default',
                 allowed_values=('default', 'mic' )
@@ -196,7 +196,7 @@ elif env['compileMode'] == 'release':
     env.Append(CCFLAGS=['-O3','-mtune=native'])
 
   elif env['compiler'] == 'intel':
-    env.Append(CCFLAGS=['-O2'])
+    env.Append(CCFLAGS=['-O2', '-xhost'])
 elif env['compileMode'] == 'analysis':
   env.Append(CPPDEFINES=['NDEBUG'])
   env.Append(CCFLAGS=['-fno-inline'])
@@ -204,7 +204,7 @@ elif env['compileMode'] == 'analysis':
     env.Append(CCFLAGS=['-O3', '-g','-mtune=native'])
 
   elif env['compiler'] == 'intel':
-    env.Append(CCFLAGS=['-O2', '-g'])
+    env.Append(CCFLAGS=['-O2', '-g', '-xhost'])
     
 # Other compiler flags (for all compilers)
 env.Append(CCFLAGS=['-fstrict-aliasing', '-fargument-noalias'])
@@ -217,8 +217,7 @@ if env['compileMode'] == 'release' and env['vectorize']:
 if env['compiler'] == 'intel' and env['showVectorization']:
   env.Append(CCFLAGS=['-vec-report3'])
 if env['compiler'] == 'intel' and env['showOptimization']:
-  print "Intel Optimization Report can be found in " + env['buildDir'] + '/opt-report.txt'
-  env.Append(CCFLAGS=['-opt-report', '-opt-report-file=' + env['buildDir'] + '/opt-report.txt'])
+  env.Append(CCFLAGS=['-opt-report'])
   
 # Platform
 if env['compiler'] == 'intel' and env['platform'] == 'mic':

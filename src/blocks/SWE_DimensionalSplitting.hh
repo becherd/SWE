@@ -14,9 +14,11 @@
  */
 class SWE_DimensionalSplitting : public SWE_Block {
 private:
+#ifndef USEOPENMP
     //! The solver used for local edge Riemann problems
 	solver::FWave<float> dimensionalSplittingSolver;
-    
+#endif
+        
     //! net-updates for the heights of the cells on the left sides of the vertical edges.
     Float2D hNetUpdatesLeft;
     //! net-updates for the heights of the cells on the right sides of the vertical edges.

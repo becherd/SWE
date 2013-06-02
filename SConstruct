@@ -179,6 +179,7 @@ elif env['parallelization'] == 'openmp':
     env.Append(CPPDEFINES=['USEOPENMP'])
     if env['compiler'] == 'intel':
         env.Append(CPPFLAGS=['-openmp'], LINKFLAGS=['-openmp'])
+        env['CXX'] = 'icpc'
     else:
         env.Append(CPPFLAGS=['-fopenmp'], LINKFLAGS=['-fopenmp'])
 else:

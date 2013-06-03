@@ -45,15 +45,14 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
         maxWaveSpeedsArray[i] = 0.f;
 #pragma omp parallel for
 #endif
-    for(int j = 0; j < ny+2; j++) {
-        float maxEdgeSpeed = 0.f;        
+    for(int i = 0; i < nx+1; i++) {
+        float maxEdgeSpeed = 0.f;
 #ifdef USEOPENMP
         // create solver for this thread
         solver::FWave<float> dimensionalSplittingSolver;
         int thread_id = omp_get_thread_num();
 #endif
-        
-        for(int i = 0; i < nx+1; i++) {
+        for(int j = 0; j < ny+2; j++) {
             dimensionalSplittingSolver.computeNetUpdates( h[i][j], h[i+1][j],
                     hu[i][j], hu[i+1][j],
                     b[i][j], b[i+1][j],
@@ -109,8 +108,8 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
 #ifdef USEOPENMP
 #pragma omp parallel for
 #endif
-    for (int j = 0; j < ny+2; j++) {
-        for (int i = 0; i < nx; i++) {
+    for (int i = 0; i < nx; i++) {
+        for (int j = 0; j < ny+2; j++) {
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
             
             // catch negative heights
@@ -140,6 +139,7 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
 #pragma omp parallel for
 #endif
     for(int i = 0; i < nx; i++) {
+
         float maxEdgeSpeed = 0.f;
 #ifdef USEOPENMP
         // create solver for this thread

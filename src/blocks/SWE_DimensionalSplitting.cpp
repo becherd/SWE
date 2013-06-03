@@ -5,7 +5,9 @@
 
 #include "SWE_DimensionalSplitting.hh"
 #include "tools/help.hh"
+#ifdef USEOPENMP
 #include <omp.h>
+#endif
 
 SWE_DimensionalSplitting::SWE_DimensionalSplitting(int l_nx, int l_ny,
     float l_dx, float l_dy):
@@ -35,16 +37,20 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
      * while NetUpdatesRight[i][j] denotes the right-going update from cell i
      * to cell i+1 in row j
      */
+    
 #ifdef USEOPENMP
+    // Save maximum wave speed for each thread
+    float* maxWaveSpeedsArray = new float[omp_get_max_threads()];
+    for(int i = 0; i < omp_get_max_threads(); i++)
+        maxWaveSpeedsArray[i] = 0.f;
 #pragma omp parallel for
 #endif
     for(int j = 0; j < ny+2; j++) {
-        float maxEdgeSpeed = 0.f;
-        float loopMax = 0.f;
-        
+        float maxEdgeSpeed = 0.f;        
 #ifdef USEOPENMP
         // create solver for this thread
         solver::FWave<float> dimensionalSplittingSolver;
+        int thread_id = omp_get_thread_num();
 #endif
         
         for(int i = 0; i < nx+1; i++) {
@@ -55,24 +61,33 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
                     huNetUpdatesLeft[i][j], huNetUpdatesRight[i][j],
                     maxEdgeSpeed );
             // Update maxWaveSpeed (x direction)
-            // loopMax is likely to be greater than maxEdgeSpeed
-            if (maxEdgeSpeed < loopMax) {
+            // maxWaveSpeed is likely to be greater than maxEdgeSpeed
+#ifdef USEOPENMP
+            // calculate maximum wave speed for this thread only
+            if (maxEdgeSpeed < maxWaveSpeedsArray[thread_id]) {
                 // nothing to do
             } else {
-                loopMax = maxEdgeSpeed;
+                maxWaveSpeedsArray[thread_id] = maxEdgeSpeed;
+            }
+#else
+            if (maxEdgeSpeed < maxWaveSpeed) {
+                // nothing to do
+            } else {
+                maxWaveSpeed = maxEdgeSpeed;
+            }
+#endif
+        }
+    }
+#ifdef USEOPENMP
+        maxWaveSpeed = maxWaveSpeedsArray[0];
+        for(int i = 1; i < omp_get_max_threads(); i++) {
+            if(maxWaveSpeed > maxWaveSpeedsArray[i]) {
+                // nothing to do
+            } else {
+                maxWaveSpeed = maxWaveSpeedsArray[i];
             }
         }
-#ifdef USEOPENMP
-#pragma omp critical
 #endif
-{
-        if(loopMax < maxWaveSpeed) {
-            // nothing
-        } else {
-            maxWaveSpeed = loopMax;
-        }
-}        
-    }
     
     assert(maxWaveSpeed > 0.0);
     
@@ -118,16 +133,20 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
      */
     maxWaveSpeed = 0.0;
 #ifdef USEOPENMP
+    // reset maximum wave speed
+    for(int i = 0; i < omp_get_max_threads(); i++)
+        maxWaveSpeedsArray[i] = 0.f;
+
 #pragma omp parallel for
 #endif
     for(int i = 0; i < nx; i++) {
         float maxEdgeSpeed = 0.f;
-#ifndef NDEBUG
-        float loopMax = 0.0;
-#endif
 #ifdef USEOPENMP
         // create solver for this thread
         solver::FWave<float> dimensionalSplittingSolver;
+  #ifndef NEDBUG
+        int thread_id = omp_get_thread_num();
+  #endif
 #endif
         for(int j = 0; j < ny+1; j++) {
             dimensionalSplittingSolver.computeNetUpdates( hStar[i][j], hStar[i][j+1],
@@ -138,30 +157,36 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
                     maxEdgeSpeed );
 #ifndef NDEBUG
             // Update maxWaveSpeed (y direction)
-            // loopMax is likely to be greater than maxEdgeSpeed
-            if(maxEdgeSpeed < loopMax) {
+            // maxWaveSpeed is likely to be greater than maxEdgeSpeed
+  #ifdef USEOPENMP
+            // calculate maximum wave speed for this thread only
+            if (maxEdgeSpeed < maxWaveSpeedsArray[thread_id]) {
                 // nothing to do
             } else {
-                loopMax = maxEdgeSpeed;
+                maxWaveSpeedsArray[thread_id] = maxEdgeSpeed;
             }
+  #else
+            if (maxEdgeSpeed < maxWaveSpeed) {
+                // nothing to do
+            } else {
+                maxWaveSpeed = maxEdgeSpeed;
+            }
+  #endif
 #endif
         }
-        
-#ifndef NDEBUG
-#ifdef USEOPENMP
-#pragma omp critical
-#endif
-{
-    if(loopMax < maxWaveSpeed) {
-        // nothing
-    } else {
-        maxWaveSpeed = loopMax;
-    }
-}
-#endif
     }
     
 #ifndef NDEBUG
+  #ifdef USEOPENMP
+    maxWaveSpeed = maxWaveSpeedsArray[0];
+    for(int i = 1; i < omp_get_max_threads(); i++) {
+        if(maxWaveSpeed > maxWaveSpeedsArray[i]) {
+            // nothing to do
+        } else {
+            maxWaveSpeed = maxWaveSpeedsArray[i];
+        }
+    }
+  #endif
     assert(maxWaveSpeed > 0.0);
     
     // Check if the CFL condition is also satisfied for y direction
@@ -173,6 +198,10 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
         std::cerr << "WARNING: CFL condition is not satisfied in y-sweep: "
                   << maxTimestepY << " < " << maxTimestep << std::endl;
     }
+#endif
+
+#ifdef USEOPENMP
+    delete[] maxWaveSpeedsArray;
 #endif
 }
 

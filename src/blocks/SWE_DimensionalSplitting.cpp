@@ -12,15 +12,15 @@
 SWE_DimensionalSplitting::SWE_DimensionalSplitting(int l_nx, int l_ny,
     float l_dx, float l_dy):
     SWE_Block(l_nx, l_ny, l_dx, l_dy),
-    hNetUpdatesLeft  (nx+1, ny+2),
-    hNetUpdatesRight (nx+1, ny+2),
-    huNetUpdatesLeft (nx+1, ny+2),
-    huNetUpdatesRight(nx+1, ny+2),
-    hNetUpdatesBelow (nx, ny+1),
-    hNetUpdatesAbove (nx, ny+1),
-    hvNetUpdatesBelow(nx, ny+1),
-    hvNetUpdatesAbove(nx, ny+1),
-    hStar(nx, ny+2)
+    hNetUpdatesLeft  (nx+1, ny+2, false),
+    hNetUpdatesRight (nx+1, ny+2, false),
+    huNetUpdatesLeft (nx+1, ny+2, false),
+    huNetUpdatesRight(nx+1, ny+2, false),
+    hNetUpdatesBelow (nx, ny+1, false),
+    hNetUpdatesAbove (nx, ny+1, false),
+    hvNetUpdatesBelow(nx, ny+1, false),
+    hvNetUpdatesAbove(nx, ny+1, false),
+    hStar(nx, ny+2, false)
 {
 }
 
@@ -88,7 +88,7 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
         }
 #endif
     
-    assert(maxWaveSpeed > 0.0);
+    assert(maxWaveSpeed > 0.f);
     
     // Compute CFL condition (slightly pessimistic)
     maxTimestep = dx/maxWaveSpeed * .4f;
@@ -113,10 +113,10 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
             hStar[i][j] =  h[i+1][j] - maxTimestep/dx * (hNetUpdatesRight[i][j] + hNetUpdatesLeft[i+1][j]);
             
             // catch negative heights
-            if(hStar[i][j] > 0.0) {
+            if(hStar[i][j] > 0.f) {
                 // nothing to do
             } else {
-                hStar[i][j] = 0.0;
+                hStar[i][j] = 0.f;
             }
         }
     }
@@ -130,7 +130,7 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
      * in the (i+1)-th column , while NetUpdatesAbove[i][j] denotes the updates going from cell 
      * j to j+1 in the (i+1)-th column of the block
      */
-    maxWaveSpeed = 0.0;
+    maxWaveSpeed = 0.f;
 #ifdef USEOPENMP
     // reset maximum wave speed
     for(int i = 0; i < omp_get_max_threads(); i++)
@@ -187,7 +187,7 @@ void SWE_DimensionalSplitting::computeNumericalFluxes()
         }
     }
   #endif
-    assert(maxWaveSpeed > 0.0);
+    assert(maxWaveSpeed > 0.f);
     
     // Check if the CFL condition is also satisfied for y direction
     float maxTimestepY = .5f * dy / maxWaveSpeed;
@@ -225,12 +225,12 @@ void SWE_DimensionalSplitting::updateUnknowns(float dt)
             hv[i+1][j+1] -= dt/dy * (hvNetUpdatesBelow[i][j+1] + hvNetUpdatesAbove[i][j]);
             
             // catch negative heights
-            if(h[i+1][j+1] > 0.0) {
+            if(h[i+1][j+1] > 0.f) {
                 // nothing to do
             } else {
-                h[i+1][j+1] = 0.0;
-                hu[i+1][j+1] = 0.0;
-                hv[i+1][j+1] = 0.0;
+                h[i+1][j+1] = 0.f;
+                hu[i+1][j+1] = 0.f;
+                hv[i+1][j+1] = 0.f;
             }
         }
     }

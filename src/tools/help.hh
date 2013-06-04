@@ -89,17 +89,38 @@ class Float2D
 {
 public:
 	/**
-         * Constructor
-         * @param _cols	number of columns (i.e., elements in horizontal direction)
-         * @param _rows rumber of rows (i.e., elements in vertical directions)
-         */
-        Float2D(int _cols, int _rows) : rows(_rows),cols(_cols)
+     * Constructor
+     *
+     * Will initialize all values to zero
+     *
+     * @param _cols	number of columns (i.e., elements in horizontal direction)
+     * @param _rows rumber of rows (i.e., elements in vertical directions)
+     */
+    Float2D(int _cols, int _rows) : rows(_rows),cols(_cols)
 	{
 		elem = new float[rows*cols];
 		for (int i = 0; i < rows*cols; i++)
 			elem[i] = 0;
 	}
-
+    
+    /**
+     * Alternative Constructor
+     *
+     * Allows to specify whether initialize all values to zero or not
+     *
+     * @param _cols number of columns (i.e., elements in horizontal direction)
+     * @param _rows rumber of rows (i.e., elements in vertical directions)
+     * @param _init whether to initialize all values to zero (true) or not (false)
+     */
+    Float2D(int _cols, int _rows, bool _init) : rows(_rows),cols(_cols)
+    {
+        elem = new float[rows*cols];
+        if(_init) {
+            for (int i = 0; i < rows*cols; i++)
+                elem[i] = 0;
+        }
+    }
+    
 	~Float2D()
 	{
 		delete[] elem;

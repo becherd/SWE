@@ -13,12 +13,17 @@
 class CoarseGridWrapperTest : public CxxTest::TestSuite {
     private:
         //! The grid wrapper instance to test on
-        CoarseGridWrapper *wrapper;
+        io::CoarseGridWrapper *wrapper;
         //! The grid wrapper instance to test on (alternative testing sequence)
-        CoarseGridWrapper *altWrapper;
+        io::CoarseGridWrapper *altWrapper;
+        //! The grid wrapper instance to test on (coarseness factor = 1)
+        io::CoarseGridWrapper *identicalWrapper;
         
         //! The grid used in testing
         Float2D *grid;
+        
+        //! The boundary size (ghost cells) at left, right, bottom, top boundary
+        io::BoundarySize boundary;
         
         //! number of columns in the refined grid
         static const unsigned int cols = 12;
@@ -39,8 +44,11 @@ class CoarseGridWrapperTest : public CxxTest::TestSuite {
         void setUp() {
             // boundary size (ghost cells) at left, right, bottom, top boundary
             // we set crazy numbers here because we should be independent of boundary size
-            io::BoundarySize boundary = {{ 1, 4, 3, 2 }};
-            
+            boundary[0] = 1;
+            boundary[1] = 4;
+            boundary[2] = 3;
+            boundary[3] = 2;
+                        
             unsigned int totalCols = cols + boundary[0] + boundary[1];
             unsigned int totalRows = rows + boundary[2] + boundary[3];
             
@@ -58,14 +66,18 @@ class CoarseGridWrapperTest : public CxxTest::TestSuite {
             }
             
             // create wrapper to test on
-            wrapper = new CoarseGridWrapper(*grid, boundary, cols, rows, coarseness);
+            wrapper = new io::CoarseGridWrapper(*grid, boundary, cols, rows, coarseness);
             // create wrapper to test on (alterative testing sequence)
-            altWrapper = new CoarseGridWrapper(*grid, boundary, altCols, altRows, altCoarseness);
+            altWrapper = new io::CoarseGridWrapper(*grid, boundary, altCols, altRows, altCoarseness);
+            // create wrapper to test on (coarseness factor = 1)
+            identicalWrapper = new io::CoarseGridWrapper(*grid, boundary, cols, rows, 1.0);
         }
         
         /// Tear Down called after each test case (delete wrapper object)
         void tearDown() {
             delete wrapper;
+            delete altWrapper;
+            delete identicalWrapper;
             delete grid;
         }
         
@@ -76,6 +88,9 @@ class CoarseGridWrapperTest : public CxxTest::TestSuite {
             
             TS_ASSERT_EQUALS(altWrapper->stepWidthX, 3.75f);
             TS_ASSERT_EQUALS(altWrapper->stepWidthY, 3.25f);
+            
+            TS_ASSERT_EQUALS(identicalWrapper->stepWidthX, 1.f);
+            TS_ASSERT_EQUALS(identicalWrapper->stepWidthY, 1.f);
         }
         
         /// Test reading of coarse values averaged over all refined values in the coarse cell
@@ -91,17 +106,27 @@ class CoarseGridWrapperTest : public CxxTest::TestSuite {
             // 0.25 * 28 + 0.5 * 28.5 + 0.5 * 30 + 1 * 30.5 = 66.75
             // 1 + 0.5 + 0.5 + 0.25 = 2.25
             TS_ASSERT_DELTA(wrapper->getElem(7,11), 66.75/2.25, 1e-5);
+            
+            // test identical wrapper
+            // should give exactly the same values as in the refined grid
+            for(unsigned int i = 0; i < cols; i++) {
+                for(unsigned int j = 0; j < rows; j++) {
+                    TS_ASSERT_EQUALS(identicalWrapper->getElem(i,j), (*grid)[i+boundary[0]][j+boundary[2]]);
+                }
+            }
         }
         
         /// Test reading of number of coarse grid columns
         void testGetCols() {
             TS_ASSERT_EQUALS(wrapper->getCols(), 8);
             TS_ASSERT_EQUALS(altWrapper->getCols(), 4);
+            TS_ASSERT_EQUALS(identicalWrapper->getCols(), cols);
         }
         
         /// Test reading of number of coarse grid rows
         void testGetRows() {
             TS_ASSERT_EQUALS(wrapper->getRows(), 12);
             TS_ASSERT_EQUALS(altWrapper->getRows(), 4);
+            TS_ASSERT_EQUALS(identicalWrapper->getRows(), rows);
         }
 };

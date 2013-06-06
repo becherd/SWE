@@ -27,36 +27,12 @@
 #define WRITER_HH_
 
 #include "tools/help.hh"
+#include "writer/BoundarySize.hh"
+#include "writer/CoarseGridWrapper.hh"
 
 namespace io {
-	struct BoundarySize;
 	class Writer;
 }
-
-/**
- * This struct is used so we can initialize this array
- * in the constructor.
- */
-struct io::BoundarySize
-{
-	 /**
-	  * boundarySize[0] == left
-	  * boundarySize[1] == right
-	  * boundarySize[2] == bottom
-	  * boundarySize[3] == top
-	  */
-	int boundarySize[4];
-
-	int& operator[](unsigned int i)
-	{
-		return boundarySize[i];
-	}
-
-	int operator[](unsigned int i) const
-	{
-		return boundarySize[i];
-	}
-};
 
 class io::Writer
 {
@@ -70,8 +46,14 @@ protected:
 	//! Boundary layer size
 	const BoundarySize boundarySize;
 
-    //! dimensions of the grid in x- and y-direction.
+    //! dimensions of the refined/internal grid in x- and y-direction.
     const unsigned int nX, nY;
+    
+	//! Coarseness factor
+	float coarseness;
+    
+    //! dimensions of the coarse/output grid in x- and y-direction
+    unsigned int coarseX, coarseY;
 
     //! current time step
     size_t timeStep;
@@ -83,13 +65,18 @@ public:
 	Writer(const std::string &i_fileName,
 		const Float2D &i_b,
 		const BoundarySize &i_boundarySize,
-		int i_nX, int i_nY)
+		int i_nX, int i_nY,
+        float i_coarseness = 1.f)
 		: fileName(i_fileName),
 		  b(i_b),
 		  boundarySize(i_boundarySize),
 		  nX(i_nX), nY(i_nY),
+          coarseness(i_coarseness),
 		  timeStep(0)
 	{
+        CoarseGridWrapper gridWrapper(b, boundarySize, nX, nY, coarseness);
+        coarseX = gridWrapper.getCols();
+        coarseY = gridWrapper.getRows();
 	}
 
 	virtual ~Writer() {}

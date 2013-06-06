@@ -28,7 +28,7 @@ int main( int argc, char** argv ) {
     int l_nY = 0;
 
 	//! coarseness factor
-	float coarseness=1.0;
+	float l_coarseness = 1.0;
     
     //! l_baseName of the plots.
     std::string l_baseName;
@@ -153,7 +153,7 @@ int main( int argc, char** argv ) {
                 }
                 break;
             case 'f':
-                coarseness = atof(optarg);
+                l_coarseness = atof(optarg);
                 break;
             default:
                 showUsage = 1;
@@ -225,7 +225,7 @@ int main( int argc, char** argv ) {
         std::cout << "    -y <num>        The number of cells in y-direction" << std::endl;
         std::cout << "    -n <num>        Number of checkpoints to be written" << std::endl;
         std::cout << "    -t <time>       Total simulation time" << std::endl;
-		std::cout << "    -f <num>        Coarseness factor" << std::endl;
+        std::cout << "    -f <num>        Coarseness factor" << std::endl;
         std::cout << "    -b <code>       Boundary Conditions" << std::endl;
         std::cout << "                    Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
         std::cout << "                      One char: Option for ALL boundaries" << std::endl;
@@ -410,8 +410,9 @@ int main( int argc, char** argv ) {
         l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
-  		l_dX, l_dY, coarseness,
-  		l_originX, l_originY);
+  		l_dX, l_dY,
+  		l_originX, l_originY,
+        l_coarseness);
         
         l_writer.writeSimulationInfo(l_numberOfCheckPoints, l_endSimulation, l_boundaryTypes);
 #else

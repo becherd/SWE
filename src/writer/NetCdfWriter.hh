@@ -47,6 +47,7 @@
 
 #include "writer/Writer.hh"
 #include "scenarios/SWE_Scenario.hh"
+#include "CoarseGridWrapper.hh"
 
 namespace io {
   class NetCdfWriter;
@@ -59,6 +60,15 @@ private:
 
     /** Variable ids */
     int timeVar, hVar, huVar, hvVar, bVar;
+
+	/** Coarseness factor */
+	float coarseness;
+
+	/** Coarse Grid */
+	Float2D* coarseGrid;
+
+	/** Refined grid sizes */
+	int i_nX, i_nY;
 
     /** Flush after every x write operation? */
     unsigned int flush;
@@ -76,7 +86,7 @@ private:
     			 const Float2D &i_b,
                  const BoundarySize &i_boundarySize,
                  int i_nX, int i_nY,
-                 float i_dX, float i_dY,
+                 float i_dX, float i_dY, float coarseness,
                  float i_originX = 0., float i_originY = 0.,
                  unsigned int i_flush = 0);
     virtual ~NetCdfWriter();

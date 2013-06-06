@@ -1,6 +1,7 @@
 #ifndef __COARSEGRIDWRAPPER_HH
 #define __COARSEGRIDWRAPPER_HH
 
+#include <cmath>
 #include <cassert>
 #include "Writer.hh"
 #include "tools/help.hh"
@@ -69,14 +70,14 @@ class CoarseGridWrapper {
         
         /// Read the value of a coarse cell averaged over the refined values
         /**
-         * @param y The x-coordinate of the requested coarse cell
+         * @param x The x-coordinate of the requested coarse cell
          * @param y The y-coordinate of the requested coarse cell
          * @return The weighted average value of all refined cells belonging to the coarse cell
          */
         inline float getElem(unsigned int x, unsigned int y) {
             assert(x >= 0); assert(y >= 0);
             assert(x < coarseX); assert(y < coarseY);
-            
+     
             float lowerX = float(x) * stepWidthX;
             float upperX = float(x+1) * stepWidthX;
             float lowerY = float(y) * stepWidthY;
@@ -138,12 +139,12 @@ class CoarseGridWrapper {
         /**
          * @return The number of rows in the coarse grid
          */
-        inline int getRows() { return coarseY; }
+        inline unsigned int getRows() { return coarseY; }
         
         /**
          * @return The number of columns in the coarse grid
          */
-        inline int getCols() { return coarseX; }
+        inline unsigned int getCols() { return coarseX; }
 };
 
 #endif

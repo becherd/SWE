@@ -32,6 +32,7 @@
 #include <iostream>
 #include <cassert>
 
+
 /**
  * Create or open an existing netCdf-file
  * 
@@ -53,7 +54,7 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
 		const Float2D &i_b,
 		const BoundarySize &i_boundarySize,
 		int i_nX, int i_nY,
-		float i_dX, float i_dY,
+		float i_dX, float i_dY, float coarseness,
 		float i_originX, float i_originY,
 		unsigned int i_flush) :
 		//const bool  &i_dynamicBathymetry) : //!TODO
@@ -67,6 +68,10 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
     
 	// dimensions
 	int l_timeDim, l_xDim, l_yDim;
+
+	this->coarseness=coarseness;
+	this->i_nX=i_nX;
+	this->i_nY=i_nY;
     
     // Try to open the file (to see if it is an existing checkpoint file)
     status = nc_open(fileName.c_str(), NC_WRITE, &dataFile);
@@ -178,15 +183,28 @@ io::NetCdfWriter::~NetCdfWriter() {
  */
 void io::NetCdfWriter::writeVarTimeDependent( const Float2D &i_matrix,
                                               int i_ncVariable ) {
+
+	//new Wrapper
+	CoarseGridWrapper gridWrapper(i_matrix, boundarySize, i_nX, i_nY, coarseness);
+	
+	//init new coarse grid
+	coarseGrid = new Float2D(gridWrapper.getCols(), gridWrapper.getRows());
+
+	for (unsigned int j=0; j<gridWrapper.getRows(); j++){
+		for (unsigned int i=0; i<gridWrapper.getCols(); i++){
+			*coarseGrid[i][j] = gridWrapper.getElem(i,j);
+		}
+	}
+
 	//write col wise, necessary to get rid of the boundary
 	//storage in Float2D is col wise
 	//read carefully, the dimensions are confusing
 	size_t start[] = {timeStep, 0, 0};
-	size_t count[] = {1, nY, 1};
-	for(unsigned int col = 0; col < nX; col++) {
+	size_t count[] = {1, gridWrapper.getRows(), 1};
+	for(unsigned int col = 0; col < gridWrapper.getCols(); col++) {
 		start[2] = col; //select col (dim "x")
 		nc_put_vara_float(dataFile, i_ncVariable, start, count,
-				&i_matrix[col+boundarySize[0]][boundarySize[2]]); //write col
+				coarseGrid[col][0]); //write col
   }
 }
 
@@ -204,15 +222,28 @@ void io::NetCdfWriter::writeVarTimeDependent( const Float2D &i_matrix,
  */
 void io::NetCdfWriter::writeVarTimeIndependent( const Float2D &i_matrix,
                                                 int i_ncVariable ) {
+
+	//new Wrapper
+	CoarseGridWrapper gridWrapper(i_matrix, boundarySize, i_nX, i_nY, coarseness);
+
+	//init new coarse grid
+	coarseGrid = new Float2D(gridWrapper.getCols(), gridWrapper.getRows());
+
+	for (unsigned int j=0; j<gridWrapper.getRows(); j++){
+		for (unsigned int i=0; i<gridWrapper.getCols(); i++){
+			*coarseGrid[i][j] = gridWrapper.getElem(i,j);
+	}
+		}
+
 	//write col wise, necessary to get rid of the boundary
 	//storage in Float2D is col wise
 	//read carefully, the dimensions are confusing
 	size_t start[] = {0, 0};
-	size_t count[] = {nY, 1};
-	for(unsigned int col = 0; col < nX; col++) {
+	size_t count[] = {gridWrapper.getRows(), 1};
+	for(unsigned int col = 0; col < gridWrapper.getCols(); col++) {
 		start[1] = col; //select col (dim "x")
 		nc_put_vara_float(dataFile, i_ncVariable, start, count,
-				&i_matrix[col+boundarySize[0]][boundarySize[2]]); //write col
+				coarseGrid[col][0]); //write col
   }
 }
 

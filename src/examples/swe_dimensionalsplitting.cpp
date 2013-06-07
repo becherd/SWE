@@ -404,7 +404,7 @@ int main( int argc, char** argv ) {
             dst << src.rdbuf();
         }
     }
-    
+
     //construct a NetCdfWriter
     io::NetCdfWriter l_writer( l_outputFileName,
         l_dimensionalSplitting.getBathymetry(),
@@ -421,7 +421,7 @@ int main( int argc, char** argv ) {
   		l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
-  		l_dX, l_dY );
+  		l_dX, l_dY, l_coarseness);
 #endif
     if(l_scenarioName != SCENARIO_CHECKPOINT_TSUNAMI) {
         // Write zero time step

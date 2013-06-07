@@ -82,9 +82,11 @@ void io::VtkWriter::writeTimeStep(
 
 	//Grid points
 	for (unsigned int j=0; j < coarseX+1; j++)
-	      for (unsigned int i=0; i < coarseY+1; i++)
-	    	  vtkFile << (offsetX+i)*(static_cast <int> (std::ceil(float(dX) / coarseness))) << " " << (offsetY+j)*(static_cast <int> (std::ceil(float(dY) / coarseness))) <<" 0" << std::endl;
-
+        for (unsigned int i=0; i < coarseY+1; i++)
+            vtkFile << (offsetX+i)*((dX * float(nX)) / float(coarseX))
+                << " " << (offsetY+j)*((dY * float(nY)) / float(coarseY))
+                << " 0" << std::endl;
+    
 	vtkFile << "</DataArray>" << std::endl
 			<< "</Points>" << std::endl;
 

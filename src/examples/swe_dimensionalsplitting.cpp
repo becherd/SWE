@@ -421,7 +421,9 @@ int main( int argc, char** argv ) {
   		l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
-  		l_dX, l_dY, l_coarseness);
+  		l_dX, l_dY,
+        0, 0,
+        l_coarseness);
 #endif
     if(l_scenarioName != SCENARIO_CHECKPOINT_TSUNAMI) {
         // Write zero time step

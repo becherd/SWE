@@ -46,8 +46,9 @@ io::VtkWriter::VtkWriter( const std::string &i_baseName,
 		const Float2D &i_b,
 		const BoundarySize &i_boundarySize,
 		int i_nX, int i_nY,
-		float i_dX, float i_dY, float i_coarseness,
-		int i_offsetX, int i_offsetY) :
+		float i_dX, float i_dY,
+		int i_offsetX, int i_offsetY,
+        float i_coarseness) :
   io::Writer(i_baseName, i_b, i_boundarySize, i_nX, i_nY, i_coarseness),
   dX(i_dX), dY(i_dY),
   offsetX(i_offsetX), offsetY(i_offsetY)

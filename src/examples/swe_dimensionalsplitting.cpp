@@ -76,6 +76,7 @@ int main( int argc, char** argv ) {
     // -i <file>       // initial bathymetry data file name (REQUIRED for certain scenarios)
     // -d <file>       // input displacement data file name (REQUIRED for certain scenarios)
     // -c <file>       // checkpoints data file name
+    // -f <float>      // output coarseness factor
     // -n <num>        // Number of checkpoints
     // -t <float>      // Simulation time in seconds
     // -s <scenario>   // Artificial scenario name ("artificialtsunami", "partialdambreak")

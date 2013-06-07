@@ -47,6 +47,7 @@
 
 #include "writer/Writer.hh"
 #include "scenarios/SWE_Scenario.hh"
+#include "CoarseGridWrapper.hh"
 
 namespace io {
   class NetCdfWriter;
@@ -78,6 +79,7 @@ private:
                  int i_nX, int i_nY,
                  float i_dX, float i_dY,
                  float i_originX = 0., float i_originY = 0.,
+                 float i_coarseness = 1.f,
                  unsigned int i_flush = 0);
     virtual ~NetCdfWriter();
 

@@ -112,7 +112,9 @@ if(env['disableUnitTests'] == False):
     env.Object('blocks/SWE_DimensionalSplitting.cpp'),
     env.Object('blocks/SWE_Block.cpp')
   ])
-
+  
+  env.CxxTest(['tests/CoarseGridWrapperTest.h'])
+  
   if env['writeNetCDF'] == True:
     env.CxxTest(['tests/SWE_TsunamiScenarioTest.h'],
       CPPDEFINES=[

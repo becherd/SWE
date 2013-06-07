@@ -26,6 +26,9 @@ int main( int argc, char** argv ) {
     
     //! Number of cells in y direction
     int l_nY = 0;
+
+	//! coarseness factor
+	float l_coarseness = 1.0;
     
     //! l_baseName of the plots.
     std::string l_baseName;
@@ -73,6 +76,7 @@ int main( int argc, char** argv ) {
     // -i <file>       // initial bathymetry data file name (REQUIRED for certain scenarios)
     // -d <file>       // input displacement data file name (REQUIRED for certain scenarios)
     // -c <file>       // checkpoints data file name
+    // -f <float>      // output coarseness factor
     // -n <num>        // Number of checkpoints
     // -t <float>      // Simulation time in seconds
     // -s <scenario>   // Artificial scenario name ("artificialtsunami", "partialdambreak")
@@ -83,7 +87,7 @@ int main( int argc, char** argv ) {
     int c;
     int showUsage = 0;
     std::string optstr;
-    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:")) != -1) {
+    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:")) != -1) {
         switch(c) {
             case 'x':
                 l_nX = atoi(optarg);
@@ -148,6 +152,9 @@ int main( int argc, char** argv ) {
                     std::cerr << "Invalid option argument: Unknown scenario (-s)" << std::endl;
                     showUsage = 1;
                 }
+                break;
+            case 'f':
+                l_coarseness = atof(optarg);
                 break;
             default:
                 showUsage = 1;
@@ -219,6 +226,7 @@ int main( int argc, char** argv ) {
         std::cout << "    -y <num>        The number of cells in y-direction" << std::endl;
         std::cout << "    -n <num>        Number of checkpoints to be written" << std::endl;
         std::cout << "    -t <time>       Total simulation time" << std::endl;
+        std::cout << "    -f <num>        Coarseness factor" << std::endl;
         std::cout << "    -b <code>       Boundary Conditions" << std::endl;
         std::cout << "                    Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
         std::cout << "                      One char: Option for ALL boundaries" << std::endl;
@@ -397,14 +405,15 @@ int main( int argc, char** argv ) {
             dst << src.rdbuf();
         }
     }
-    
+
     //construct a NetCdfWriter
     io::NetCdfWriter l_writer( l_outputFileName,
         l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
   		l_dX, l_dY,
-  		l_originX, l_originY);
+  		l_originX, l_originY,
+        l_coarseness);
         
         l_writer.writeSimulationInfo(l_numberOfCheckPoints, l_endSimulation, l_boundaryTypes);
 #else
@@ -413,7 +422,9 @@ int main( int argc, char** argv ) {
   		l_dimensionalSplitting.getBathymetry(),
   		l_boundarySize,
   		l_nX, l_nY,
-  		l_dX, l_dY );
+  		l_dX, l_dY,
+        0, 0,
+        l_coarseness);
 #endif
     if(l_scenarioName != SCENARIO_CHECKPOINT_TSUNAMI) {
         // Write zero time step

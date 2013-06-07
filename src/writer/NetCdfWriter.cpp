@@ -32,6 +32,7 @@
 #include <iostream>
 #include <cassert>
 
+
 /**
  * Create or open an existing netCdf-file
  * 
@@ -46,6 +47,7 @@
  * @param i_dY cell size in y-direction.
  * @param i_originX
  * @param i_originY
+ * @param i_coarseness The coarseness factor
  * @param i_flush If > 0, flush data to disk every i_flush write operation
  * @param i_dynamicBathymetry
  */
@@ -55,9 +57,10 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
 		int i_nX, int i_nY,
 		float i_dX, float i_dY,
 		float i_originX, float i_originY,
-		unsigned int i_flush) :
+		float i_coarseness,
+        unsigned int i_flush) :
 		//const bool  &i_dynamicBathymetry) : //!TODO
-  io::Writer(i_baseName + ".nc", i_b, i_boundarySize, i_nX, i_nY),
+  io::Writer(i_baseName + ".nc", i_b, i_boundarySize, i_nX, i_nY, i_coarseness),
   flush(i_flush)
 {
 	int status;
@@ -94,7 +97,7 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
         status = nc_inq_dimlen(dataFile, l_timeDim, &timeStep);
         
         // Check actual dimensions in file against supplied dimensions
-        assert(l_xLen == nX); assert(l_yLen == nY);
+        assert(l_xLen == coarseX); assert(l_yLen == coarseY);
     } else {
         // File does not exist or is not a valid NetCDF file
     	//create a netCDF-file, an existing file will be replaced
@@ -109,14 +112,16 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
 #ifdef PRINT_NETCDFWRITER_INFORMATION
     	std::cout << "   *** io::NetCdfWriter::createNetCdfFile" << std::endl;
     	std::cout << "     created/replaced: " << fileName << std::endl;
-    	std::cout << "     dimensions(nx, ny): " << nX << ", " << nY << std::endl;
+    	std::cout << "     internal dimensions(nx, ny): " << nX << ", " << nY << std::endl;
+        std::cout << "     dimensions(nx, ny): " << coarseX << ", " << coarseY << std::endl;
+        std::cout << "     coarseness: " << coarseness << std::endl;
     	std::cout << "     cell width(dx,dy): " << i_dX << ", " << i_dY << std::endl;
     	std::cout << "     origin(x,y): " << i_originX << ", " << i_originY << std::endl;
 #endif
 
     	nc_def_dim(dataFile, "time", NC_UNLIMITED, &l_timeDim);
-    	nc_def_dim(dataFile, "x", nX, &l_xDim);
-    	nc_def_dim(dataFile, "y", nY, &l_yDim);
+    	nc_def_dim(dataFile, "x", coarseX, &l_xDim);
+    	nc_def_dim(dataFile, "y", coarseY, &l_yDim);
 
     	nc_def_var(dataFile, "time", NC_FLOAT, 1, &l_timeDim, &timeVar);
     	ncPutAttText(timeVar, "long_name", "Time");
@@ -142,14 +147,14 @@ io::NetCdfWriter::NetCdfWriter( const std::string &i_baseName,
 
     	//setup grid size
     	float gridPosition = i_originX + (float).5 * i_dX;
-    	for(size_t i = 0; i < nX; i++) {
+    	for(size_t i = 0; i < coarseX; i++) {
     		nc_put_var1_float(dataFile, l_xVar, &i, &gridPosition);
 
     		gridPosition += i_dX;
     	}
 
     	gridPosition = i_originY + (float).5 * i_dY;
-    	for(size_t j = 0; j < nY; j++) {
+    	for(size_t j = 0; j < coarseY; j++) {
     		nc_put_var1_float(dataFile, l_yVar, &j, &gridPosition);
 
         	gridPosition += i_dY;
@@ -178,15 +183,24 @@ io::NetCdfWriter::~NetCdfWriter() {
  */
 void io::NetCdfWriter::writeVarTimeDependent( const Float2D &i_matrix,
                                               int i_ncVariable ) {
+
+	// Create a grid wrapper for coarse output
+	CoarseGridWrapper gridWrapper(i_matrix, boundarySize, nX, nY, coarseness);
+	
+    // convert column-by-column to coarse output and write to disk
+    float column[coarseY];
+
 	//write col wise, necessary to get rid of the boundary
 	//storage in Float2D is col wise
 	//read carefully, the dimensions are confusing
 	size_t start[] = {timeStep, 0, 0};
-	size_t count[] = {1, nY, 1};
-	for(unsigned int col = 0; col < nX; col++) {
+	size_t count[] = {1, coarseY, 1};
+	for(unsigned int col = 0; col < coarseX; col++) {
+        for(unsigned int row = 0; row < coarseY; row++)
+            column[row] = gridWrapper.getElem(col, row);
+        
 		start[2] = col; //select col (dim "x")
-		nc_put_vara_float(dataFile, i_ncVariable, start, count,
-				&i_matrix[col+boundarySize[0]][boundarySize[2]]); //write col
+		nc_put_vara_float(dataFile, i_ncVariable, start, count, column); //write col
   }
 }
 
@@ -204,15 +218,23 @@ void io::NetCdfWriter::writeVarTimeDependent( const Float2D &i_matrix,
  */
 void io::NetCdfWriter::writeVarTimeIndependent( const Float2D &i_matrix,
                                                 int i_ncVariable ) {
+
+	// Create a grid wrapper for coarse output
+	CoarseGridWrapper gridWrapper(i_matrix, boundarySize, nX, nY, coarseness);
+
+    // convert column-by-column to coarse output and write to disk
+    float column[coarseY];
+    
 	//write col wise, necessary to get rid of the boundary
 	//storage in Float2D is col wise
 	//read carefully, the dimensions are confusing
 	size_t start[] = {0, 0};
-	size_t count[] = {nY, 1};
-	for(unsigned int col = 0; col < nX; col++) {
+	size_t count[] = {coarseY, 1};
+	for(unsigned int col = 0; col < coarseX; col++) {
+        for(unsigned int row = 0; row < coarseY; row++)
+            column[row] = gridWrapper.getElem(col, row);
 		start[1] = col; //select col (dim "x")
-		nc_put_vara_float(dataFile, i_ncVariable, start, count,
-				&i_matrix[col+boundarySize[0]][boundarySize[2]]); //write col
+		nc_put_vara_float(dataFile, i_ncVariable, start, count, column); //write col
   }
 }
 
@@ -255,9 +277,6 @@ void io::NetCdfWriter::writeTimeStep( const Float2D &i_h,
 
 	// Increment timeStep for next call
 	timeStep++;
-
-	if (flush > 0 && timeStep % flush == 0)
-		nc_sync(dataFile);
 }
 
 /**

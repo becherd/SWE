@@ -47,7 +47,8 @@ public:
 			   const BoundarySize &i_boundarySize,
 			   int i_nX, int i_nY,
 			   float i_dX, float i_dY,
-			   int i_offsetX = 0, int i_offsetY = 0);
+			   int i_offsetX = 0, int i_offsetY = 0,
+               float i_coarseness = 1.f);
 
     // writes the unknowns at a given time step to a vtk file
     void writeTimeStep( const Float2D &i_h,

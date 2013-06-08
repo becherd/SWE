@@ -59,7 +59,9 @@ class CoarseGridWrapperTest : public CxxTest::TestSuite {
             for(unsigned int i = 0; i < totalCols; i++) {
                 for(unsigned int j = 0; j < totalRows; j++) {
                     // In the refined grid
-                    // 
+                    // value = 2*x + 0.5*y
+                    // note that x and y are relative to the boundary, cells in 
+                    // the boundary have negative x and/or y coordinates!
                     float value = float(2*(int(i)-int(boundary[0])) + 0.5 * (int(j)-int(boundary[2])));
                     (*grid)[i][j] = value;
                 }

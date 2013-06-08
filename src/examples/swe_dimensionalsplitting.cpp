@@ -361,6 +361,9 @@ int main( int argc, char** argv ) {
         // load last checkpoint and timestep from scenario (checkpoint-file)
         ((SWE_CheckpointTsunamiScenario *)l_scenario)->getLastCheckpoint(l_checkpoint, l_t);
         l_checkpoint++;
+        
+        // forace coarseness of 1 if reading from checkpoint data
+        l_coarseness = 1.0;
     }
 #endif
     

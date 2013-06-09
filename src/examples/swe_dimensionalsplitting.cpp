@@ -179,6 +179,12 @@ int main( int argc, char** argv ) {
             std::cerr << "Invalid option argument: Number of checkpoints must be greater than zero (-n)" << std::endl;
             showUsage = 1;
         }
+        
+        if(l_coarseness < 1.0) {
+            std::cerr << "Invalid option argument: The coarseness factor must be greater than or equal to 1.0 (-f)" << std::endl;
+            showUsage = 1;
+        }
+        
         // Check if a checkpoint-file is given as input. If so, switch to checkpoint scenario
         if(!l_checkpointFileName.empty()) {
             l_scenarioName = SCENARIO_CHECKPOINT_TSUNAMI;
@@ -226,7 +232,7 @@ int main( int argc, char** argv ) {
         std::cout << "    -y <num>        The number of cells in y-direction" << std::endl;
         std::cout << "    -n <num>        Number of checkpoints to be written" << std::endl;
         std::cout << "    -t <time>       Total simulation time" << std::endl;
-        std::cout << "    -f <num>        Coarseness factor" << std::endl;
+        std::cout << "    -f <num>        Coarseness factor (> 1.0)" << std::endl;
         std::cout << "    -b <code>       Boundary Conditions" << std::endl;
         std::cout << "                    Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
         std::cout << "                      One char: Option for ALL boundaries" << std::endl;

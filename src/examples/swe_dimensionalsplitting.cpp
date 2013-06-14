@@ -1,7 +1,11 @@
 #include <iostream>
 #include <unistd.h>
 
+#ifndef USEOPENCL
 #include "blocks/SWE_DimensionalSplitting.hh"
+#else
+#include "blocks/opencl/SWE_DimensionalSplittingOpenCL.hh"
+#endif
 #include "scenarios/SWE_Scenario.hh"
 #include "scenarios/SWE_PartialDambreak.hh"
 #include "scenarios/SWE_ArtificialTsunamiScenario.hh"
@@ -331,7 +335,11 @@ int main( int argc, char** argv ) {
     l_dY = (l_scenario->getBoundaryPos(BND_TOP) - l_scenario->getBoundaryPos(BND_BOTTOM) )/l_nY;
     
     //! Dimensional Splitting Block
+#ifndef USEOPENCL
     SWE_DimensionalSplitting l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
+#else
+    SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
+#endif
     
     //! origin of the simulation domain in x- and y-direction
     float l_originX, l_originY;

@@ -61,6 +61,62 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             TSM_ASSERT_DELTA(text, maxWaveSpeed, expectedMaxWaveSpeed, delta);
         }
         
+        void _runSweep(const char* kernelName,
+            int sourceCount, int updateCount,
+            int kernelRangeX, int kernelRangeY,
+            float* h,
+            float* hu,
+            float* b,
+            float* expectedHNetUpdateLeft, float* expectedHNetUpdateRight,
+            float* expectedHuNetUpdateLeft, float* expectedHuNetUpdateRight,
+            float* expectedMaxWaveSpeed)
+        {
+            // h, hu and b input buffers
+            cl::Buffer hBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), h);
+            cl::Buffer huBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), hu);
+            cl::Buffer bBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), b);
+            
+            // net update and maxwave buffers
+            cl::Buffer hLeftBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer hRightBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer huLeftBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer huRightBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer maxWaveBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            
+            cl::Kernel *k = &(wrapper->kernels[kernelName]);
+            k->setArg(0, hBuf);
+            k->setArg(1, huBuf);
+            k->setArg(2, bBuf);
+            k->setArg(3, hLeftBuf);
+            k->setArg(4, hRightBuf);
+            k->setArg(5, huLeftBuf);
+            k->setArg(6, huRightBuf);
+            k->setArg(7, maxWaveBuf);
+            
+            wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(kernelRangeX,kernelRangeY), cl::NullRange);
+            
+            
+            float   hNetUpdateLeft[updateCount], hNetUpdateRight[updateCount],
+                    huNetUpdateLeft[updateCount], huNetUpdateRight[updateCount],
+                    maxWaveSpeed[updateCount];
+            
+            wrapper->queues[0].enqueueReadBuffer(hLeftBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &hNetUpdateLeft);
+            wrapper->queues[0].enqueueReadBuffer(hRightBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &hNetUpdateRight);
+            wrapper->queues[0].enqueueReadBuffer(huLeftBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &huNetUpdateLeft);
+            wrapper->queues[0].enqueueReadBuffer(huRightBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &huNetUpdateRight);
+            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &maxWaveSpeed);
+            
+            float delta = 1e-3;
+            
+            for(int i = 0; i < updateCount; i++) {
+                TSM_ASSERT_DELTA("h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
+                TSM_ASSERT_DELTA("h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
+                TSM_ASSERT_DELTA("hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
+                TSM_ASSERT_DELTA("hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+                TSM_ASSERT_DELTA("max wave speed", maxWaveSpeed[i], expectedMaxWaveSpeed[i], delta);
+            }
+        }
+        
     public:
         void setUp() {
             wrapper = new OpenCLWrapper();
@@ -72,6 +128,134 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         
         void tearDown() {
             delete wrapper;
+        }
+        
+        /// Test kernel function calculating the X-Sweep net updates
+        void testXSweep() {            
+            int x = 4;
+            int y = 4;
+    
+            int srcCount = x*y;
+            int updCount = (x-1)*y;
+            
+            // Note that all values are stored in column major order (as in Float2D)
+            float h[] = {
+                15.0, 10.0, 12.0, 11.0,
+                12.0, 11.0, 13.0,  9.0,
+                13.0,  7.0, 10.5,  8.0,
+                12.5,  8.5,  9.0,  10.0
+            };
+    
+            float hu[] = {
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0
+            };
+    
+            float b[] = {
+                -5.0, -2.0, -3.0, -5.0,
+                -5.6, -1.5, -2.7, -3.4,
+                -4.3, -2.2, -4.0, -2.3,
+                -6.6, -3.1, -0.5, -1.0,
+            };
+            
+            float expectedHNetUpdateLeft[] = {
+                20.7145, -7.61185, -7.19785, 1.98091, 
+                -12.7347, 22.0812, 20.3989, -0.456578, 
+                15.6573, -2.61581, -9.77995, -15.5039
+            };
+            float expectedHNetUpdateRight[] = {
+                -20.7145, 7.61185, 7.19785, -1.98091, 
+                12.7347, -22.0812, -20.3989, 0.456578, 
+                -15.6573, 2.61581, 9.77995, 15.5039 
+            };
+            float expectedHuNetUpdateLeft[] = {
+                -238.383, 77.2538, 79.7063, -19.62, 
+                141.019, -207.481, -219.008, 4.16926, 
+                -175.109, 22.8083, 95.6475, 145.679
+            };
+            float expectedHuNetUpdateRight[] = {
+                -238.383, 77.2538, 79.7063, -19.62, 
+                141.019, -207.481, -219.008, 4.16926, 
+                -175.109, 22.8083, 95.6475, 145.679 
+            };
+            float expectedMaxWaveSpeed[] = {
+                11.508, 10.1491, 11.0736, 9.90454, 
+                11.0736, 9.39628, 10.7363, 9.13154, 
+                11.1838, 8.71938, 9.77995, 9.39628
+            };
+    
+            _runSweep(  "dimensionalSplitting_XSweep_netUpdates",
+                        srcCount, updCount, x-1, y,
+                        h, hu, b,
+                        expectedHNetUpdateLeft, expectedHNetUpdateRight,
+                        expectedHuNetUpdateLeft, expectedHuNetUpdateRight,
+                        expectedMaxWaveSpeed);
+        }
+        
+        /// Test kernel function calculating the Y-Sweep net updates
+        void testYSweep() {            
+            int x = 4;
+            int y = 4;
+    
+            int srcCount = x*y;
+            int updCount = x*(y-1);
+            
+            // Note that all values are stored in column major order (as in Float2D)
+            float h[] = {
+                15.0, 10.0, 12.0, 11.0,
+                12.0, 11.0, 13.0,  9.0,
+                13.0,  7.0, 10.5,  8.0,
+                12.5,  8.5,  9.0,  10.0
+            };
+    
+            float hu[] = {
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0
+            };
+    
+            float b[] = {
+                -5.0, -2.0, -3.0, -5.0,
+                -5.6, -1.5, -2.7, -3.4,
+                -4.3, -2.2, -4.0, -2.3,
+                -6.6, -3.1, -0.5, -1.0,
+            };
+            
+            float expectedHNetUpdateLeft[] = {
+                11.0736, -5.19399, 15.9322, -16.4632, 
+                -4.33996, 24.4117, 19.3139, -7.87512, 
+                3.81036, 2.53728, -14.3605, -2.41344
+            };
+            float expectedHNetUpdateRight[] = {
+                -11.0736, 5.19399, -15.9322, 16.4632, 
+                4.33996, -24.4117, -19.3139, 7.87512, 
+                -3.81036, -2.53728, 14.3605, 2.41344 
+            };
+            float expectedHuNetUpdateLeft[] = {
+                -122.625, 53.955, -169.223, 174.863, 
+                47.088, -253.588, -191.295, 72.9619, 
+                -36.297, -25.7513, 133.048, 23.2988
+            };
+            float expectedHuNetUpdateRight[] = {
+                -122.625, 53.955, -169.223, 174.863, 
+                47.088, -253.588, -191.295, 72.9619, 
+                -36.297, -25.7513, 133.048, 23.2988 
+            };
+            float expectedMaxWaveSpeed[] = {
+                11.0736, 10.388, 10.6214, 10.6214, 
+                10.8499, 10.388, 9.90454, 9.26485, 
+                9.52589, 10.1491, 9.26485, 9.65376
+            };
+    
+            _runSweep(  "dimensionalSplitting_YSweep_netUpdates",
+                        srcCount, updCount, x, y-1,
+                        h, hu, b,
+                        expectedHNetUpdateLeft, expectedHNetUpdateRight,
+                        expectedHuNetUpdateLeft, expectedHuNetUpdateRight,
+                        expectedMaxWaveSpeed);
         }
         
         /// Test the computeNetUpdates kernel

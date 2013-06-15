@@ -294,6 +294,8 @@ if env['parallelization'] == 'opencl':
     env.Append(LIBPATH=[env['openCLLibDir']])
   
   env.Append(CPPDEFINES=['USEOPENCL'])
+  # include dir for generated kernel files
+  env.Append(CPPPATH=['blocks/opencl'])
   
   # TODO: allow linking against custom vendor
   # implementation (e.g. Nvidia CUDA) on Mac OS (Darwin)
@@ -387,7 +389,6 @@ Import('env')
 
 # prepare opencl kernels for inclusion into program
 if env['parallelization'] == 'opencl':
-  env.Append(CPPPATH=['blocks/opencl'])
   # Transform OpenCL source into hex array
   oclBuilder = Builder(
       action = 'xxd -i $SOURCE > $TARGET',

@@ -26,6 +26,9 @@ public:
         float l_dx, float l_dy,
         cl_device_type preferredDeviceType = 0);
     
+    /// Print information about OpenCL devices used
+    void printDeviceInformation();
+    
     /// Simulate a single timestep.
     /**
      * @param dt The timestep

@@ -131,27 +131,6 @@ protected:
             exit(-1);
         }
         
-#ifndef NDEBUG
-        std::cout << "Creating OpenCL context with device type ";
-        switch(deviceType) {
-            case CL_DEVICE_TYPE_CPU:
-                std::cout << "CPU";
-                break;
-            case CL_DEVICE_TYPE_GPU:
-                std::cout << "GPU";
-                break;
-            case CL_DEVICE_TYPE_ACCELERATOR:
-                std::cout << "ACCELERATOR";
-                break;
-            case CL_DEVICE_TYPE_DEFAULT:
-                std::cout << "DEFAULT";
-                break;
-            default:
-                std::cout << "UNKNOWN";
-        }
-        std::cout << std::endl;
-#endif
-        
         // create context of chosen device type
         try {        
             // TODO: supply callback function
@@ -159,16 +138,8 @@ protected:
             // Read devices in context
             context.getInfo(CL_CONTEXT_DEVICES, &devices);
             
-            std::cout << "Using context with " << devices.size() << " OpenCL devices:" << std::endl;
-            
             // for each computing device, create an in-order command queue
-            for(unsigned int i = 0; i < devices.size(); i++) {
-                std::string deviceName, deviceVendor;
-            
-                devices[i].getInfo(CL_DEVICE_NAME, &deviceName);
-                devices[i].getInfo(CL_DEVICE_VENDOR, &deviceVendor);
-            
-                std::cout << "    (" << i << ") " << deviceVendor << " " << deviceName << std::endl; 
+            for(unsigned int i = 0; i < devices.size(); i++) { 
                 queues.push_back(cl::CommandQueue(context, devices[i]));
             }
         } catch (cl::Error &e) {
@@ -203,16 +174,11 @@ public:
         
             std::vector<cl::Kernel> _kernels;
             program.createKernels(&_kernels);
-#ifndef NDEBUG
-            std::cout << "Found " << _kernels.size() << " OpenCL kernels:" << std::endl;
-#endif
+            
             for(unsigned int i = 0; i < _kernels.size(); i++) {
                 std::string kernelName;
                 _kernels[i].getInfo(CL_KERNEL_FUNCTION_NAME, &kernelName);
                 kernels[kernelName] = _kernels[i];
-#ifndef NDEBUG
-                std::cout << "    (" << i << ") " << kernelName << "()"<< std::endl;
-#endif
             }
         } catch(cl::Error &e) {
             if(e.err() != CL_BUILD_PROGRAM_FAILURE) {
@@ -220,7 +186,7 @@ public:
             }
         
             // Kernel build failure
-            std::cerr << "Error building program:" << std::endl;
+            std::cerr << "Error building OpenCL program:" << std::endl;
             for(unsigned int i = 0; i < devices.size(); i++) {
                 cl_build_status buildStatus;
                 buildStatus = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(devices[i]);

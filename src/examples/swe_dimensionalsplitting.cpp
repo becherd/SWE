@@ -339,6 +339,7 @@ int main( int argc, char** argv ) {
     SWE_DimensionalSplitting l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
 #else
     SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
+    l_dimensionalSplitting.printDeviceInformation();
 #endif
     
     //! origin of the simulation domain in x- and y-direction

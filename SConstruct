@@ -395,10 +395,11 @@ if env['parallelization'] == 'opencl':
       suffix = '.h',
       prefix = 'kernels/')
   env.Append(BUILDERS = {'OpenCLKernel' : oclBuilder})
-  kernels = env.OpenCLKernel(env.kernel_files)
-  # build kernel header immediately
-  env.RightNow(kernels)
   
+  # build kernel headers immediately
+  for i in env.kernel_files:
+    env.RightNow(env.OpenCLKernel(i))
+    
   # Create header including all transformed OpenCL Kernel files
   # The header also includes the function getKernelSources 
   # with which an kernel source object for OpenCL can be retrieved
@@ -406,7 +407,7 @@ if env['parallelization'] == 'opencl':
   kernelHeaderFunction = ''
   for i in env.kernel_files:
     kernelBaseName = os.path.basename(i.rstr())
-    kernelVarName = 'src_blocks_opencl_' + kernelBaseName.replace('.', '_')
+    kernelVarName = i.rstr().replace('.', '_').replace('/', '_')
     kernelHeaderInclude += '#include "kernels/' + os.path.splitext(kernelBaseName)[0] + '.h"\n'
     kernelHeaderFunction += '    src.push_back(std::make_pair((char*)'+kernelVarName+', '+kernelVarName+'_len));\n'
   kernelHeader = kernelHeaderInclude

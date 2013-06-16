@@ -133,6 +133,9 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     h[rightId] -= dt_dx * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
     // Update momentum in x-direction
     hu[rightId] -= dt_dx * (huNetUpdatesRight[leftId] + huNetUpdatesLeft[rightId]);
+    
+    // Catch negative heights
+    h[rightId] = fmax(h[rightId], 0.f);
 }
 
 /// Update Unknowns (Y-Sweep)
@@ -167,4 +170,7 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     h[rightId] -= dt_dy * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
     // Update momentum in x-direction
     hv[rightId] -= dt_dy * (hvNetUpdatesRight[leftId] + hvNetUpdatesLeft[rightId]);
+    
+    // Catch negative heights
+    h[rightId] = fmax(h[rightId], 0.f);
 }

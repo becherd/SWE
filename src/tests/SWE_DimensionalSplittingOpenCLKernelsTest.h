@@ -351,8 +351,8 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             // -INFINITY implies "don't care"
             float expectedH[] = {
                 -INFINITY, -INFINITY, -INFINITY, -INFINITY, 
-                28.7246, -3.84655, -0.798387, 10.2187, 
-                -1.19599, 19.3485, 25.5894, 15.5236,
+                28.7246, 0.0, 0.0, 10.2187, 
+                0.0, 19.3485, 25.5894, 15.5236,
                 -INFINITY, -INFINITY, -INFINITY, -INFINITY
             };
             
@@ -422,7 +422,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             // -INFINITY implies "don't care"
             float expectedH[] = {
                 -INFINITY, 18.1338, 1.43693, -INFINITY, 
-                -INFINITY, -3.37585, 15.5489, -INFINITY, 
+                -INFINITY, 0.0, 15.5489, -INFINITY, 
                 -INFINITY, 7.63654, 18.9489, -INFINITY, 
                 -INFINITY, 8.5, 9, -INFINITY
             };

@@ -65,7 +65,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
  * Kernel Range should be set to (#cols, #rows-1)
  * 
  * @param h                     Pointer to water heights
- * @param hu                    Pointer to horizontal water momentums
+ * @param hv                    Pointer to vertical water momentums
  * @param b                     Pointer to bathymetry
  * @param hNetUpdatesLeft       Pointer to left going water updates
  * @param hNetUpdatesRight      Pointer to right going water updates
@@ -75,12 +75,12 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
  */
 __kernel void dimensionalSplitting_YSweep_netUpdates(
     __global float* h,
-    __global float* hu,
+    __global float* hv,
     __global float* b,
     __global float* hNetUpdatesLeft,
     __global float* hNetUpdatesRight,
-    __global float* huNetUpdatesLeft,
-    __global float* huNetUpdatesRight,
+    __global float* hvNetUpdatesLeft,
+    __global float* hvNetUpdatesRight,
     __global float* maxWaveSpeed)
 {
     size_t x = get_global_id(0);
@@ -93,10 +93,78 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     
     computeNetUpdates(
         h[leftId], h[rightId],
-        hu[leftId], hu[rightId],
+        hv[leftId], hv[rightId],
         b[leftId], b[rightId],
         &(hNetUpdatesLeft[updateId]), &(hNetUpdatesRight[updateId]),
-        &(huNetUpdatesLeft[updateId]), &(huNetUpdatesRight[updateId]),
+        &(hvNetUpdatesLeft[updateId]), &(hvNetUpdatesRight[updateId]),
         &(maxWaveSpeed[updateId])
     );
+}
+
+/// Update Unknowns (X-Sweep)
+/**
+ * Kernel Range should be set to (#cols-2, #rows)
+ * 
+ * @param dt_dx                 The desired update step
+ * @param h                     Pointer to water heights
+ * @param hu                    Pointer to horizontal water momentums
+ * @param hNetUpdatesLeft       Pointer to left going water updates
+ * @param hNetUpdatesRight      Pointer to right going water updates
+ * @param huNetUpdatesLeft      Pointer to left going momentum updates
+ * @param huNetUpdatesRight     Pointer to right going momentum updates
+ */
+__kernel void dimensionalSplitting_XSweep_updateUnknowns(
+    float dt_dx,
+    __global float* h,
+    __global float* hu,
+    __global float* hNetUpdatesLeft,
+    __global float* hNetUpdatesRight,
+    __global float* huNetUpdatesLeft,
+    __global float* huNetUpdatesRight)
+{
+    size_t x = get_global_id(0);
+    size_t y = get_global_id(1);
+    size_t rows = get_global_size(1);
+    
+    size_t leftId = colMajor(x, y, rows); // [x][y]
+    size_t rightId = colMajor(x+1, y, rows); // [x+1][y]
+    
+    // update heights
+    h[rightId] -= dt_dx * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
+    // Update momentum in x-direction
+    hu[rightId] -= dt_dx * (huNetUpdatesRight[leftId] + huNetUpdatesLeft[rightId]);
+}
+
+/// Update Unknowns (Y-Sweep)
+/**
+ * Kernel Range should be set to (#cols, #rows-2)
+ * 
+ * @param dt_dy                 The desired update step
+ * @param h                     Pointer to water heights
+ * @param hv                    Pointer to vertical water momentums
+ * @param hNetUpdatesLeft       Pointer to left going water updates
+ * @param hNetUpdatesRight      Pointer to right going water updates
+ * @param hvNetUpdatesLeft      Pointer to left going momentum updates
+ * @param hvNetUpdatesRight     Pointer to right going momentum updates
+ */
+__kernel void dimensionalSplitting_YSweep_updateUnknowns(
+    float dt_dy,
+    __global float* h,
+    __global float* hv,
+    __global float* hNetUpdatesLeft,
+    __global float* hNetUpdatesRight,
+    __global float* hvNetUpdatesLeft,
+    __global float* hvNetUpdatesRight)
+{
+    size_t x = get_global_id(0);
+    size_t y = get_global_id(1);
+    size_t rows = get_global_size(1);
+    
+    size_t leftId = colMajor(x, y, rows+2); // [x][y]
+    size_t rightId = colMajor(x, y+1, rows+2); // [x][y+1]
+    
+    // update heights
+    h[rightId] -= dt_dy * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
+    // Update momentum in x-direction
+    hv[rightId] -= dt_dy * (hvNetUpdatesRight[leftId] + hvNetUpdatesLeft[rightId]);
 }

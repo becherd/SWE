@@ -117,6 +117,53 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             }
         }
         
+        void _runUpdate(const char* kernelName,
+            int sourceCount, int updateCount,
+            int kernelRangeX, int kernelRangeY,
+            float ds_dt,
+            float* h, float* hu,
+            float* hNetUpdateLeft, float* hNetUpdateRight,
+            float* huNetUpdateLeft, float* huNetUpdateRight,
+            float* expectedH, float* expectedHu)
+        {
+            // h, hu and b input buffers
+            cl::Buffer hBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), h);
+            cl::Buffer huBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), hu);
+            
+            // net update and maxwave buffers
+            cl::Buffer hLeftBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), hNetUpdateLeft);
+            cl::Buffer hRightBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), hNetUpdateRight);
+            cl::Buffer huLeftBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), huNetUpdateLeft);
+            cl::Buffer huRightBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), huNetUpdateRight);
+            
+            cl::Kernel *k = &(wrapper->kernels[kernelName]);
+            k->setArg(0, ds_dt);
+            k->setArg(1, hBuf);
+            k->setArg(2, huBuf);
+            k->setArg(3, hLeftBuf);
+            k->setArg(4, hRightBuf);
+            k->setArg(5, huLeftBuf);
+            k->setArg(6, huRightBuf);
+            
+            wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(kernelRangeX,kernelRangeY), cl::NullRange);
+            
+            
+            float hResult[sourceCount], huResult[sourceCount];
+            
+            wrapper->queues[0].enqueueReadBuffer(hBuf, CL_BLOCKING, 0, sourceCount*sizeof(float), hResult);
+            wrapper->queues[0].enqueueReadBuffer(huBuf, CL_BLOCKING, 0, sourceCount*sizeof(float), huResult);
+            
+            float delta = 1e-3;
+            
+            for(int i = 0; i < sourceCount; i++) {
+                
+                if(expectedH[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("h", hResult[i], expectedH[i], delta);
+                if(expectedHu[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("hu", huResult[i], expectedHu[i], delta);
+            }
+        }
+        
     public:
         void setUp() {
             wrapper = new OpenCLWrapper();
@@ -256,6 +303,148 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                         expectedHNetUpdateLeft, expectedHNetUpdateRight,
                         expectedHuNetUpdateLeft, expectedHuNetUpdateRight,
                         expectedMaxWaveSpeed);
+        }
+        
+        void testXUpdateUnknowns() {
+            int x = 4;
+            int y = 4;
+            
+            int srcCount = x*y;
+            int updCount = (x-1)*y;
+            
+            // Note that all values are stored in column major order (as in Float2D)
+            float h[] = {
+                15.0, 10.0, 12.0, 11.0,
+                12.0, 11.0, 13.0,  9.0,
+                13.0,  7.0, 10.5,  8.0,
+                12.5,  8.5,  9.0,  10.0
+            };
+    
+            float hu[] = {
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0
+            };
+            
+            float hNetUpdateLeft[] = {
+                20.7145, -7.61185, -7.19785, 1.98091, 
+                -12.7347, 22.0812, 20.3989, -0.456578, 
+                15.6573, -2.61581, -9.77995, -15.5039
+            };
+            float hNetUpdateRight[] = {
+                -20.7145, 7.61185, 7.19785, -1.98091, 
+                12.7347, -22.0812, -20.3989, 0.456578, 
+                -15.6573, 2.61581, 9.77995, 15.5039 
+            };
+            float huNetUpdateLeft[] = {
+                -238.383, 77.2538, 79.7063, -19.62, 
+                141.019, -207.481, -219.008, 4.16926, 
+                -175.109, 22.8083, 95.6475, 145.679
+            };
+            float huNetUpdateRight[] = {
+                -238.383, 77.2538, 79.7063, -19.62, 
+                141.019, -207.481, -219.008, 4.16926, 
+                -175.109, 22.8083, 95.6475, 145.679 
+            };
+            
+            // -INFINITY implies "don't care"
+            float expectedH[] = {
+                -INFINITY, -INFINITY, -INFINITY, -INFINITY, 
+                28.7246, -3.84655, -0.798387, 10.2187, 
+                -1.19599, 19.3485, 25.5894, 15.5236,
+                -INFINITY, -INFINITY, -INFINITY, -INFINITY
+            };
+            
+            // -INFINITY implies "don't care"
+            float expectedHu[] = {
+                -INFINITY, -INFINITY, -INFINITY, -INFINITY, 
+                48.6821, 65.1139, 69.651, 7.72536, 
+                17.0449, 92.3366, 61.6804, -74.9239,
+                -INFINITY, -INFINITY, -INFINITY, -INFINITY
+            };
+            
+            float dt_dx = 0.5;
+            
+            _runUpdate( "dimensionalSplitting_XSweep_updateUnknowns",
+                    srcCount, updCount, x-2, y,
+                    dt_dx,
+                    h, hu,
+                    hNetUpdateLeft, hNetUpdateRight,
+                    huNetUpdateLeft, huNetUpdateRight,
+                    expectedH, expectedHu
+                );
+        }
+        
+        void testYUpdateUnknowns() {
+            int x = 4;
+            int y = 4;
+            
+            int srcCount = x*y;
+            int updCount = x*(y-1);
+            
+            // Note that all values are stored in column major order (as in Float2D)
+            float h[] = {
+                15.0, 10.0, 12.0, 11.0,
+                12.0, 11.0, 13.0,  9.0,
+                13.0,  7.0, 10.5,  8.0,
+                12.5,  8.5,  9.0,  10.0
+            };
+    
+            float hu[] = {
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0
+            };
+            
+            float hNetUpdateLeft[] = {
+                11.0736, -5.19399, 15.9322, -16.4632, 
+                -4.33996, 24.4117, 19.3139, -7.87512, 
+                3.81036, 2.53728, -14.3605, -2.41344
+            };
+            float hNetUpdateRight[] = {
+                -11.0736, 5.19399, -15.9322, 16.4632, 
+                4.33996, -24.4117, -19.3139, 7.87512, 
+                -3.81036, -2.53728, 14.3605, 2.41344 
+            };
+            float huNetUpdateLeft[] = {
+                -122.625, 53.955, -169.223, 174.863, 
+                47.088, -253.588, -191.295, 72.9619, 
+                -36.297, -25.7513, 133.048, 23.2988
+            };
+            float huNetUpdateRight[] = {
+                -122.625, 53.955, -169.223, 174.863, 
+                47.088, -253.588, -191.295, 72.9619, 
+                -36.297, -25.7513, 133.048, 23.2988 
+            };
+            
+            // -INFINITY implies "don't care"
+            float expectedH[] = {
+                -INFINITY, 18.1338, 1.43693, -INFINITY, 
+                -INFINITY, -3.37585, 15.5489, -INFINITY, 
+                -INFINITY, 7.63654, 18.9489, -INFINITY, 
+                -INFINITY, 8.5, 9, -INFINITY
+            };
+            
+            // -INFINITY implies "don't care"
+            float expectedHu[] = {
+                -INFINITY, 34.335, 57.6338, -INFINITY, 
+                -INFINITY, 103.25, 222.442, -INFINITY, 
+                -INFINITY, 31.0241, -53.6484, -INFINITY, 
+                -INFINITY, 0, 0, -INFINITY
+            };
+            
+            float dt_dx = 0.5;
+            
+            _runUpdate( "dimensionalSplitting_YSweep_updateUnknowns",
+                    srcCount, updCount, x, y-2,
+                    dt_dx,
+                    h, hu,
+                    hNetUpdateLeft, hNetUpdateRight,
+                    huNetUpdateLeft, huNetUpdateRight,
+                    expectedH, expectedHu
+                );
         }
         
         /// Test the computeNetUpdates kernel

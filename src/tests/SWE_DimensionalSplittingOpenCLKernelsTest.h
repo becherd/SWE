@@ -305,6 +305,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                         expectedMaxWaveSpeed);
         }
         
+        /// Test Kernel for update of unkown values (h, hu) from calculated net updates (X direction)
         void testXUpdateUnknowns() {
             int x = 4;
             int y = 4;
@@ -376,6 +377,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                 );
         }
         
+        /// Test Kernel for update of unkown values (h, hv) from calculated net updates (Y direction)
         void testYUpdateUnknowns() {
             int x = 4;
             int y = 4;
@@ -533,5 +535,58 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                 4.5, 3.5, 2.5, 1.5, 0.0, 0.0,
                 0.0, 0.0, 0.0, 0.0, 0.0
             );
+        }
+        
+        /// Test Kernel for reduction of maximum in an array (GPU version)
+        void testReduceMaximum() {
+            
+            // testing array
+            unsigned int size = 73*16;
+            unsigned int workGroup = 16; // working group size
+            unsigned int groupCount = (unsigned int) std::ceil((float)size/workGroup);
+            unsigned int globalSize = workGroup*groupCount;
+            
+            float values[size];
+            float values2[size];
+            
+            // actual maximum value
+            float max[groupCount];
+            for(unsigned int i = 0; i < groupCount; i++)
+                max[i] = -INFINITY;
+            
+            // init random seed
+            srand((unsigned)time(0));
+            
+            // fill values array with random values
+            for(unsigned int i = 0; i < size; i++) {
+                float f = (rand() % 100) * ((float)rand()/(float)RAND_MAX);
+                
+                unsigned int group = i/workGroup;
+                max[group] = std::max(f, max[group]);
+                values[i] = f;
+            }
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(float), values);
+        
+            cl::Kernel *k = &(wrapper->kernels["reduceMaximum"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, size);
+            k->setArg(2, 1);
+            k->setArg(3, cl::__local(sizeof(cl_float) * workGroup));
+            
+            if(k->getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(wrapper->devices[0]) <= 1) {
+                TS_SKIP("Kernel cannot be executed on this device due to maximum work group size of 1");
+            } else {
+                try {
+                    wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup));
+                    wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_BLOCKING, 0, size*sizeof(float), values2);
+                } catch(cl::Error &e) {
+                    wrapper->handleError(e);
+                }
+            
+                for(unsigned int i = 0; i < groupCount; i++) {
+                    TS_ASSERT_EQUALS(values2[workGroup*i], max[i]);
+                }
+            }
         }
 };

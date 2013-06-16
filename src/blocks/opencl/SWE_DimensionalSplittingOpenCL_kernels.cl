@@ -174,3 +174,46 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     // Catch negative heights
     h[rightId] = fmax(h[rightId], 0.f);
 }
+
+/// Kernel to reduce the maximum value of an array (or linearized 2D grid)
+/**
+ * Notes:
+ * - The work group size MUST be a power of 2 to work properly!
+ * - This kernel is destructive, e.g. the values-Array will be overriden
+ * - The maximum for each work group can be read from values[groupId*groupSize]
+ * - This kernel is NOT suited for execution on CPUs (due to limited work group size)
+ * 
+ * @param values Pointer to the array
+ * @param length Number of elements in value array
+ * @param stride The stride of values to take into account
+ * @param scratch Pointer to local scratch memory (at least sizeof(float)*workgroupsize)
+ */
+__kernel void reduceMaximum(
+    __global float* values,
+    __const uint length,
+    __const uint stride,
+    __local float* scratch)
+{
+    size_t global_id = get_global_id(0);
+    size_t source_id = stride*global_id;
+    size_t local_id = get_local_id(0);
+    
+    if(source_id < length) {
+        scratch[local_id] = values[source_id];
+    } else {
+        scratch[local_id] = -INFINITY;
+    }
+    
+    barrier(CLK_LOCAL_MEM_FENCE);
+    for(uint i = 2; i <= get_local_size(0); i <<= 1) {
+        // Fast modulo operation (for i being a power of two)
+        if((local_id & (i-1)) == 0) {
+            scratch[local_id] = fmax(scratch[ local_id ], scratch[ local_id + (i>>1) ]);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    if(local_id == 0) {
+        values[source_id] = scratch[0];
+    }
+}

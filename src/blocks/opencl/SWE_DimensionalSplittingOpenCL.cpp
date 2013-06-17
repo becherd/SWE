@@ -121,50 +121,51 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
 void SWE_DimensionalSplittingOpenCL::createBuffers()
 {
     cl_mem_flags flags = getBufferMemoryFlags(true);
-    hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), h.getRows()*h.getCols(), h.elemVector());
-    hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), hu.getRows()*hu.getCols(), hu.elemVector());
-    hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), hv.getRows()*hv.getCols(), hv.elemVector());
-    bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), b.getRows()*b.getCols(), b.elemVector());
+    size_t bufferSize = h.getRows() * h.getCols() * sizeof(cl_float);
+    hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, h.elemVector());
+    hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, hu.elemVector());
+    hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, hv.elemVector());
+    bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, b.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()
 {
     if(unifiedMemory) return;
-    queues[0].enqueueWriteBuffer(hd, CL_BLOCKING, 0, h.getCols()*h.getRows(), h.elemVector());
+    queues[0].enqueueWriteBuffer(hd, CL_BLOCKING, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
 {
     if(unifiedMemory) return;
     // TODO: use async, non-blocking read
-    queues[0].enqueueWriteBuffer(hud, CL_BLOCKING, 0, hu.getCols()*hu.getRows(), hu.elemVector());
-    queues[0].enqueueWriteBuffer(hvd, CL_BLOCKING, 0, hv.getCols()*hv.getRows(), hv.elemVector());
+    queues[0].enqueueWriteBuffer(hud, CL_BLOCKING, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector());
+    queues[0].enqueueWriteBuffer(hvd, CL_BLOCKING, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryAfterWrite()
 {
     if(unifiedMemory) return;
-    queues[0].enqueueWriteBuffer(bd, CL_BLOCKING, 0, b.getCols()*b.getRows(), b.elemVector());
+    queues[0].enqueueWriteBuffer(bd, CL_BLOCKING, 0, b.getRows()*b.getCols()*sizeof(cl_float), b.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightBeforeRead()
 {
     if(unifiedMemory) return;
-    queues[0].enqueueReadBuffer(hd, CL_BLOCKING, 0, h.getCols()*h.getRows(), h.elemVector());
+    queues[0].enqueueReadBuffer(hd, CL_BLOCKING, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
 {
     if(unifiedMemory) return;
     // TODO: use async, non-blocking read
-    queues[0].enqueueReadBuffer(hud, CL_BLOCKING, 0, hu.getCols()*hu.getRows(), hu.elemVector());
-    queues[0].enqueueReadBuffer(hvd, CL_BLOCKING, 0, hv.getCols()*hv.getRows(), hv.elemVector());
+    queues[0].enqueueReadBuffer(hud, CL_BLOCKING, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector());
+    queues[0].enqueueReadBuffer(hvd, CL_BLOCKING, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryBeforeRead()
 {
     if(unifiedMemory) return;
-    queues[0].enqueueReadBuffer(bd, CL_BLOCKING, 0, b.getCols()*b.getRows(), b.elemVector());
+    queues[0].enqueueReadBuffer(bd, CL_BLOCKING, 0, b.getCols()*b.getRows()*sizeof(cl_float), b.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()

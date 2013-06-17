@@ -14,14 +14,51 @@
  */
 class SWE_DimensionalSplittingOpenCL : public SWE_Block, public OpenCLWrapper {
 protected:
-   /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
-   /**
-    * @param queue The command queue to perform the reduction on
-    * @param buffer The buffer the reduce
-    * @param length The length of the array
-    * @return The reduced maximum value
-    */
-   float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length);
+    //! h variable buffer on computing device
+    cl::Buffer hd;
+    
+    //! hu variable buffer on computing device
+    cl::Buffer hud;
+    
+    //! hv variable buffer on computing device
+    cl::Buffer hvd;
+    
+    //! b variable buffer on computing device
+    cl::Buffer bd;
+    
+    //! Whether computing devices and host have a unified memory
+    bool unifiedMemory;
+    
+    /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
+    /**
+     * @param queue The command queue to perform the reduction on
+     * @param buffer The buffer the reduce
+     * @param length The length of the array
+     * @return The reduced maximum value
+     */
+    float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length);
+   
+    /// Create OpenCL device buffers for h, hu, hv, and b variables
+    void createBuffers();
+    
+    /// Return device flags to be used when creating buffers
+    /**
+     * @param copyContent Whether to copy content from a host pointer or not
+     */
+    inline cl_mem_flags getBufferMemoryFlags(bool copyContent) {
+        if(copyContent) {
+            if(unifiedMemory)
+                // Device and Host share the same memory, we can use the host memory directly
+                return CL_MEM_USE_HOST_PTR;
+            else
+                // Device has its own global memory, copy contents from host pointer
+                return CL_MEM_COPY_HOST_PTR;
+        } else {
+            // Default
+            return 0;
+        }
+    }
+    
 public:
     /// Dimensional Splitting Constructor (OpenCL)
     /**
@@ -69,6 +106,42 @@ public:
      * @param dt The timestep
      */
     void updateUnknowns(float dt);
+    
+    /**
+     * Update OpenCL water height buffer on computing device
+     * after an external update of the water height (e.g. read scenario)
+     */
+    void synchWaterHeightAfterWrite();
+
+    /**
+     * Update OpenCL buffers on computing device after an external
+     * update of the hu and hv variables (e.g. read scenario)
+     */
+    void synchDischargeAfterWrite();
+
+    /**
+     * Update OpenCL bathymetry buffer on computing device
+     * after an external update of the bathymetry (e.g. read scenario)
+     */
+    void synchBathymetryAfterWrite();
+    
+    /**
+     * Update host-side water height variable from OpenCL water height
+     * buffer on computing device before external read (e.g. write output)
+     */
+    void synchWaterHeightBeforeRead();
+    
+    /**
+     * Update host-side water hu and hv variables from OpenCL hu and hv buffers
+     * on computing device before external read (e.g. write output)
+     */
+    void synchDischargeBeforeRead();
+    
+    /**
+     * Update host-side bathymetry variable from OpenCL bathymetry
+     * buffer on computing device before external read (e.g. write output)
+     */
+    void synchBathymetryBeforeRead();
 };
 
 #endif /* SWE_DIMENSIONALSPLITTINGOPENCL_HH_ */

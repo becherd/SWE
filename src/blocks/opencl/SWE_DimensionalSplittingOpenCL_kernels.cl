@@ -175,12 +175,12 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     h[rightId] = fmax(h[rightId], 0.f);
 }
 
-/// Kernel to reduce the maximum value of an array (or linearized 2D grid)
+/// Kernel to reduce the maximum value of an array (or linearized 2D grid) (CPU Version)
 /**
  * Notes:
  * - The work group size MUST be a power of 2 to work properly!
  * - This kernel is destructive, e.g. the values-Array will be overriden
- * - The maximum for each work group can be read from values[groupId*groupSize]
+ * - The maximum for each work group can be read from values[groupId*groupSize*stride]
  * - This kernel is NOT suited for execution on CPUs (due to limited work group size)
  * 
  * @param values Pointer to the array
@@ -216,4 +216,40 @@ __kernel void reduceMaximum(
     if(local_id == 0) {
         values[source_id] = scratch[0];
     }
+}
+
+
+/// Kernel to reduce the maximum value of an array (or linearized 2D grid) (CPU Version)
+/**
+ * Notes:
+ * - The global ND range MUST NOT exceed ceil(size/block)
+ * - This kernel is destructive, e.g. the values-Array will be overriden
+ * - The maximum for each block can be read from values[globalId*block*stride]
+ * - This kernel is ONLY suited for execution on CPUs
+ * 
+ * @param values Pointer to the array
+ * @param length Number of elements in value array
+ * @param block The block size to process
+ * @param stride The stride of values to take into account
+ */
+__kernel void reduceMaximumCPU(
+    __global float* values,
+    __const uint length,
+    __const uint block,
+    __const uint stride)
+{
+    size_t global_id = get_global_id(0);
+    
+    uint start = global_id * block * stride;
+    uint end = (global_id+1) * block * stride;
+    // make sure we stay inside array bounds
+    end = min(end, length);
+    
+    float acc = -INFINITY;
+    
+    for(uint i = start; i < end; i += stride) {
+        acc = fmax(acc, values[i]);
+    }
+    
+    values[start] = acc;
 }

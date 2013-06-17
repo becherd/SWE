@@ -541,7 +541,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         void testReduceMaximum() {
             
             // testing array
-            unsigned int size = 73*16;
+            unsigned int size = 73*16+3;
             unsigned int workGroup = 16; // working group size
             unsigned int groupCount = (unsigned int) std::ceil((float)size/workGroup);
             unsigned int globalSize = workGroup*groupCount;
@@ -587,6 +587,53 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                 for(unsigned int i = 0; i < groupCount; i++) {
                     TS_ASSERT_EQUALS(values2[workGroup*i], max[i]);
                 }
+            }
+        }
+        
+        /// Test Kernel for reduction of maximum in an array (CPU version)
+        void testReduceMaximumCPU() {
+            // testing array
+            unsigned int size = 73*16+3;
+            unsigned int workGroup = 16; // working group size
+            unsigned int groupCount = (unsigned int) std::ceil((float)size/workGroup);
+            
+            float values[size];
+            float values2[size];
+            
+            // actual maximum value
+            float max[groupCount];
+            for(unsigned int i = 0; i < groupCount; i++)
+                max[i] = -INFINITY;
+            
+            // init random seed
+            srand((unsigned)time(0));
+            
+            // fill values array with random values
+            for(unsigned int i = 0; i < size; i++) {
+                float f = (rand() % 100) * ((float)rand()/(float)RAND_MAX);
+                
+                unsigned int group = i/workGroup;
+                max[group] = std::max(f, max[group]);
+                values[i] = f;
+            }
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(float), values);
+        
+            cl::Kernel *k = &(wrapper->kernels["reduceMaximumCPU"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, size);
+            k->setArg(2, workGroup);
+            k->setArg(3, 1);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(groupCount), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_BLOCKING, 0, size*sizeof(float), values2);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < groupCount; i++) {
+                TS_ASSERT_EQUALS(values2[workGroup*i], max[i]);
             }
         }
 };

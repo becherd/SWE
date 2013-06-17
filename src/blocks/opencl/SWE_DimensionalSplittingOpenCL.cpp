@@ -2,6 +2,7 @@
 #define SWE_DIMENSIONALSPLITTINGOPENCL_CPP_
 
 #include <cassert>
+#include <cmath>
 
 #include "SWE_DimensionalSplittingOpenCL.hh"
 #include "tools/help.hh"
@@ -56,6 +57,62 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
     std::cout << std::endl;
 }
 
+float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length) {
+    cl::Kernel *k;
+    float result;
+    
+    cl::Device device = queue.getInfo<CL_QUEUE_DEVICE>();
+    
+    if(device.getInfo<CL_DEVICE_TYPE>() == CL_DEVICE_TYPE_CPU) {
+        // Use CPU optimized kernel
+        k = &(kernels["reduceMaximumCPU"]);
+        unsigned int stride = 1;
+        unsigned int block = std::min(std::max(length/1024, (unsigned int)16), (unsigned int)8192);
+        
+        unsigned int items = (unsigned int)ceil((float)length/(float)(block*stride));
+        
+        while(items > 1) {
+            k->setArg(0, buffer);
+            k->setArg(1, length);
+            k->setArg(2, block);
+            k->setArg(3, stride);
+            
+            items = (unsigned int)ceil((float)length/(float)(block*stride));
+            
+            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange);
+            
+            stride *= block;
+        }
+    } else {
+        // Use GPU optimized kernel
+        k = &(kernels["reduceMaximum"]);
+        unsigned int stride = 1;
+        // get optimal work group size
+        unsigned int workGroup = k->getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+        assert(workGroup > 1);
+        
+        unsigned int groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
+        unsigned int globalSize = workGroup*groupCount;
+        
+        while(groupCount > 1) {
+            k->setArg(0, buffer);
+            k->setArg(1, length);
+            k->setArg(2, stride);
+            k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
+            
+            groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
+            globalSize = workGroup*groupCount;
+            
+            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup));
+            
+            stride *= workGroup;
+        }
+    }
+    
+    // read result
+    queue.enqueueReadBuffer(buffer, CL_BLOCKING, 0, sizeof(float), &result);
+    return result;
+}
 void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
 {
     // TODO

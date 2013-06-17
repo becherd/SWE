@@ -136,6 +136,11 @@ if(env['disableUnitTests'] == False):
     
   if env['parallelization'] == 'opencl':
     env.CxxTest(['tests/SWE_DimensionalSplittingOpenCLKernelsTest.h'])
+    env.CxxTest([
+      'tests/SWE_DimensionalSplittingOpenCLTest.h',
+      env.Object('blocks/opencl/SWE_DimensionalSplittingOpenCL.cpp'),
+      env.Object('blocks/SWE_Block.cpp')
+    ])
   else:
     print >> sys.stderr, 'WARNING: OpenCL Unit Tests cannot be run because parallelization is not OpenCL'
     

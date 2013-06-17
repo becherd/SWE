@@ -13,6 +13,15 @@
  * and then the y sweep.
  */
 class SWE_DimensionalSplittingOpenCL : public SWE_Block, public OpenCLWrapper {
+protected:
+   /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
+   /**
+    * @param queue The command queue to perform the reduction on
+    * @param buffer The buffer the reduce
+    * @param length The length of the array
+    * @return The reduced maximum value
+    */
+   float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length);
 public:
     /// Dimensional Splitting Constructor (OpenCL)
     /**

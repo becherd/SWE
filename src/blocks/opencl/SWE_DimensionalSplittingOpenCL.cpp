@@ -113,6 +113,9 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
         }
     }
     
+    // TODO: use events for synchronization
+    queues[0].finish();
+    
     // read result
     queue.enqueueReadBuffer(buffer, CL_BLOCKING, 0, sizeof(float), &result);
     return result;
@@ -177,7 +180,81 @@ void SWE_DimensionalSplittingOpenCL::synchBathymetryBeforeRead()
 
 void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
 {
-    // TODO
+    // Pointer to kernel object
+    cl::Kernel *k;    
+    try {
+        // enqueue X-Sweep Kernel
+        k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
+        k->setArg(0, hd);
+        k->setArg(1, hud);
+        k->setArg(2, bd);
+        k->setArg(3, hNetUpdatesLeft);
+        k->setArg(4, hNetUpdatesRight);
+        k->setArg(5, huNetUpdatesLeft);
+        k->setArg(6, huNetUpdatesRight);
+        k->setArg(7, waveSpeeds);
+
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-1, h.getRows()), cl::NullRange);
+
+        // TODO: use events for synchronization
+        queues[0].finish();
+
+        // reduce waveSpeed Maximum
+        float maxWaveSpeed = reduceMaximum(queues[0], waveSpeeds, (h.getCols()-1) * h.getRows());
+        // calculate maximum timestep
+        maxTimestep = dx/maxWaveSpeed * 0.4f;
+
+        // enqueue updateUnknowns Kernel (X-Sweep)
+        k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
+        float dt_dx = maxTimestep / dx;
+        k->setArg(0, dt_dx);
+        k->setArg(1, hd);
+        k->setArg(2, hud);
+        k->setArg(3, hNetUpdatesLeft);
+        k->setArg(4, hNetUpdatesRight);
+        k->setArg(5, huNetUpdatesLeft);
+        k->setArg(6, huNetUpdatesRight);
+
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-2, h.getRows()), cl::NullRange);
+
+        // TODO: use events for synchronization
+        queues[0].finish();
+
+        // enqueue Y-Sweep Kernel
+        k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
+        k->setArg(0, hd);
+        k->setArg(1, hvd);
+        k->setArg(2, bd);
+        k->setArg(3, hNetUpdatesLeft);
+        k->setArg(4, hNetUpdatesRight);
+        k->setArg(5, huNetUpdatesLeft);
+        k->setArg(6, huNetUpdatesRight);
+        k->setArg(7, waveSpeeds);
+        
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-1), cl::NullRange);
+
+    
+        // TODO: use events for synchronization
+        queues[0].finish();
+
+        // enqueue netUpdate Kernel (Y-Sweep)
+        k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);
+        float dt_dy = maxTimestep / dy;
+        k->setArg(0, dt_dy);
+        k->setArg(1, hd);
+        k->setArg(2, hvd);
+        k->setArg(3, hNetUpdatesLeft);
+        k->setArg(4, hNetUpdatesRight);
+        k->setArg(5, huNetUpdatesLeft);
+        k->setArg(6, huNetUpdatesRight);
+
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-2), cl::NullRange);
+
+        // TODO: use events for synchronization
+        queues[0].finish();
+    } catch(cl::Error &e) {
+        handleError(e);
+    }
 }
 
 void SWE_DimensionalSplittingOpenCL::updateUnknowns(float dt)

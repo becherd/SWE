@@ -16,15 +16,23 @@ class SWE_DimensionalSplittingOpenCL : public SWE_Block, public OpenCLWrapper {
 protected:
     //! h variable buffer on computing device
     cl::Buffer hd;
-    
     //! hu variable buffer on computing device
     cl::Buffer hud;
-    
     //! hv variable buffer on computing device
     cl::Buffer hvd;
-    
     //! b variable buffer on computing device
     cl::Buffer bd;
+    
+    //! internal buffer for h net updates (left) on computing device
+    cl::Buffer hNetUpdatesLeft;
+    //! internal buffer for h net updates (right) on computing device
+    cl::Buffer hNetUpdatesRight;
+    //! internal buffer for hu net updates (left) on computing device
+    cl::Buffer huNetUpdatesLeft;
+    //! internal buffer for hu net updates (right) on computing device
+    cl::Buffer huNetUpdatesRight;
+    //! internal buffer for computed wavespeeds
+    cl::Buffer waveSpeeds;
     
     //! Whether computing devices and host have a unified memory
     bool unifiedMemory;
@@ -40,24 +48,6 @@ protected:
    
     /// Create OpenCL device buffers for h, hu, hv, and b variables
     void createBuffers();
-    
-    /// Return device flags to be used when creating buffers
-    /**
-     * @param copyContent Whether to copy content from a host pointer or not
-     */
-    inline cl_mem_flags getBufferMemoryFlags(bool copyContent) {
-        if(copyContent) {
-            if(unifiedMemory)
-                // Device and Host share the same memory, we can use the host memory directly
-                return CL_MEM_USE_HOST_PTR;
-            else
-                // Device has its own global memory, copy contents from host pointer
-                return CL_MEM_COPY_HOST_PTR;
-        } else {
-            // Default
-            return 0;
-        }
-    }
     
 public:
     /// Dimensional Splitting Constructor (OpenCL)

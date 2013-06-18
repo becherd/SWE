@@ -120,12 +120,19 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
 
 void SWE_DimensionalSplittingOpenCL::createBuffers()
 {
-    cl_mem_flags flags = getBufferMemoryFlags(true);
+    cl_mem_flags flags = (unifiedMemory) ? CL_MEM_USE_HOST_PTR : 0;
     size_t bufferSize = h.getRows() * h.getCols() * sizeof(cl_float);
-    hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, h.elemVector());
-    hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, hu.elemVector());
-    hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, hv.elemVector());
-    bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, b.elemVector());
+    hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? h.elemVector() : NULL));
+    hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hu.elemVector() : NULL));
+    hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hv.elemVector() : NULL));
+    bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, (unifiedMemory ? b.elemVector() : NULL));
+    
+    // These buffers are named for Xsweep but will also be used in the Ysweep
+    hNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    hNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    huNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    huNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    waveSpeeds = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()

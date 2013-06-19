@@ -163,16 +163,17 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
     
-    size_t leftId = colMajor(x, y, rows+2); // [x][y]
-    size_t rightId = colMajor(x, y+1, rows+2); // [x][y+1]
+    size_t cellId = colMajor(x, y+1, rows+2);
+    size_t leftId = colMajor(x, y, rows+1); // [x][y]
+    size_t rightId = colMajor(x, y+1, rows+1); // [x][y+1]
     
     // update heights
-    h[rightId] -= dt_dy * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
+    h[cellId] -= dt_dy * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
     // Update momentum in x-direction
-    hv[rightId] -= dt_dy * (hvNetUpdatesRight[leftId] + hvNetUpdatesLeft[rightId]);
+    hv[cellId] -= dt_dy * (hvNetUpdatesRight[leftId] + hvNetUpdatesLeft[rightId]);
     
     // Catch negative heights
-    h[rightId] = fmax(h[rightId], 0.f);
+    h[cellId] = fmax(h[cellId], 0.f);
 }
 
 /// Kernel to reduce the maximum value of an array (or linearized 2D grid) (CPU Version)

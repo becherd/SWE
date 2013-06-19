@@ -401,14 +401,16 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
             
             float hNetUpdateLeft[] = {
-                11.0736, -5.19399, 15.9322, -16.4632, 
-                -4.33996, 24.4117, 19.3139, -7.87512, 
-                3.81036, 2.53728, -14.3605, -2.41344
+                11.0736, -5.19399, 15.9322,
+                -16.4632, -4.33996, 24.4117,
+                19.3139, -7.87512, 3.81036,
+                2.53728, -14.3605, -2.41344
             };
             float hNetUpdateRight[] = {
-                -11.0736, 5.19399, -15.9322, 16.4632, 
-                4.33996, -24.4117, -19.3139, 7.87512, 
-                -3.81036, -2.53728, 14.3605, 2.41344 
+                -11.0736, 5.19399, -15.9322,
+                16.4632, 4.33996, -24.4117,
+                -19.3139, 7.87512, -3.81036,
+                -2.53728, 14.3605, 2.41344 
             };
             float huNetUpdateLeft[] = {
                 -122.625, 53.955, -169.223, 174.863, 
@@ -421,20 +423,20 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                 -36.297, -25.7513, 133.048, 23.2988 
             };
             
-            // -INFINITY implies "don't care"
+            // -INFINITY implies "don't care"            
             float expectedH[] = {
                 -INFINITY, 18.1338, 1.43693, -INFINITY, 
-                -INFINITY, 0.0, 15.5489, -INFINITY, 
-                -INFINITY, 7.63654, 18.9489, -INFINITY, 
-                -INFINITY, 8.5, 9, -INFINITY
+                -INFINITY, 4.93836, 0.0, -INFINITY, 
+                -INFINITY, 20.5945, 4.65726, -INFINITY, 
+                -INFINITY, 16.9489, 3.02646, -INFINITY
             };
             
             // -INFINITY implies "don't care"
             float expectedHu[] = {
                 -INFINITY, 34.335, 57.6338, -INFINITY, 
-                -INFINITY, 103.25, 222.442, -INFINITY, 
-                -INFINITY, 31.0241, -53.6484, -INFINITY, 
-                -INFINITY, 0, 0, -INFINITY
+                -INFINITY, -110.976, 103.25, -INFINITY, 
+                -INFINITY, 59.1666, -18.3324, -INFINITY, 
+                -INFINITY, -53.6484, -78.1734, -INFINITY
             };
             
             float dt_dx = 0.5;

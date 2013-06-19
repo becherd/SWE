@@ -17,7 +17,7 @@ private:
     SWE_DimensionalSplittingOpenCL *block;
     
     /** tolerance for assertions */
-    const static float TOLERANCE = 1e-1;
+    const static float TOLERANCE = 1e-5;
     /** relative tolerance for assertions */
     const static float REL_TOLERANCE = 0.025;
     

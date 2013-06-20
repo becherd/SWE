@@ -42,12 +42,25 @@ protected:
      * @param queue The command queue to perform the reduction on
      * @param buffer The buffer the reduce
      * @param length The length of the array
+     * @param waitEvent OpenCL queue event to wait for before starting
      * @return The reduced maximum value
      */
-    float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length);
+    float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent = NULL);
    
     /// Create OpenCL device buffers for h, hu, hv, and b variables
     void createBuffers();
+    
+    /// Get the properties to be used for OpenCL Command Queues (e.g. out-of-order execution)
+    inline cl_command_queue_properties getCommandQueueProperties() {
+        cl_command_queue_properties properties;
+        
+        properties = CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE;
+#ifndef NDEBUG
+        // Enable profiling in debug mode
+        properties |= CL_QUEUE_PROFILING_ENABLE;
+#endif
+        return properties;
+    }
     
 public:
     /// Dimensional Splitting Constructor (OpenCL)
@@ -104,6 +117,12 @@ public:
      */
     void updateUnknowns(float dt);
     
+   /**
+    * Update OpenCL buffers on computing device
+    * after an external update of the water height (e.g. read scenario)
+    */
+    void synchAfterWrite();
+    
     /**
      * Update OpenCL water height buffer on computing device
      * after an external update of the water height (e.g. read scenario)
@@ -121,6 +140,12 @@ public:
      * after an external update of the bathymetry (e.g. read scenario)
      */
     void synchBathymetryAfterWrite();
+    
+   /**
+    * Update host-side variables from OpenCL buffers on computing device
+    * before external read (e.g. write output)
+    */
+    void synchBeforeRead();
     
     /**
      * Update host-side water height variable from OpenCL water height

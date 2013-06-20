@@ -46,11 +46,11 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             
             wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(1), cl::NullRange);
 
-            wrapper->queues[0].enqueueReadBuffer(hLeftBuf, CL_BLOCKING, 0, sizeof(float), &hNetUpdateLeft);
-            wrapper->queues[0].enqueueReadBuffer(hRightBuf, CL_BLOCKING, 0, sizeof(float), &hNetUpdateRight);
-            wrapper->queues[0].enqueueReadBuffer(huLeftBuf, CL_BLOCKING, 0, sizeof(float), &huNetUpdateLeft);
-            wrapper->queues[0].enqueueReadBuffer(huRightBuf, CL_BLOCKING, 0, sizeof(float), &huNetUpdateRight);
-            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_BLOCKING, 0, sizeof(float), &maxWaveSpeed);
+            wrapper->queues[0].enqueueReadBuffer(hLeftBuf, CL_TRUE, 0, sizeof(float), &hNetUpdateLeft);
+            wrapper->queues[0].enqueueReadBuffer(hRightBuf, CL_TRUE, 0, sizeof(float), &hNetUpdateRight);
+            wrapper->queues[0].enqueueReadBuffer(huLeftBuf, CL_TRUE, 0, sizeof(float), &huNetUpdateLeft);
+            wrapper->queues[0].enqueueReadBuffer(huRightBuf, CL_TRUE, 0, sizeof(float), &huNetUpdateRight);
+            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_TRUE, 0, sizeof(float), &maxWaveSpeed);
             
             float delta = 1e-3;
             
@@ -100,11 +100,11 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                     huNetUpdateLeft[updateCount], huNetUpdateRight[updateCount],
                     maxWaveSpeed[updateCount];
             
-            wrapper->queues[0].enqueueReadBuffer(hLeftBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &hNetUpdateLeft);
-            wrapper->queues[0].enqueueReadBuffer(hRightBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &hNetUpdateRight);
-            wrapper->queues[0].enqueueReadBuffer(huLeftBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &huNetUpdateLeft);
-            wrapper->queues[0].enqueueReadBuffer(huRightBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &huNetUpdateRight);
-            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_BLOCKING, 0, updateCount*sizeof(float), &maxWaveSpeed);
+            wrapper->queues[0].enqueueReadBuffer(hLeftBuf, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateLeft);
+            wrapper->queues[0].enqueueReadBuffer(hRightBuf, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateRight);
+            wrapper->queues[0].enqueueReadBuffer(huLeftBuf, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateLeft);
+            wrapper->queues[0].enqueueReadBuffer(huRightBuf, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateRight);
+            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_TRUE, 0, updateCount*sizeof(float), &maxWaveSpeed);
             
             float delta = 1e-3;
             
@@ -150,8 +150,8 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             
             float hResult[sourceCount], huResult[sourceCount];
             
-            wrapper->queues[0].enqueueReadBuffer(hBuf, CL_BLOCKING, 0, sourceCount*sizeof(float), hResult);
-            wrapper->queues[0].enqueueReadBuffer(huBuf, CL_BLOCKING, 0, sourceCount*sizeof(float), huResult);
+            wrapper->queues[0].enqueueReadBuffer(hBuf, CL_TRUE, 0, sourceCount*sizeof(float), hResult);
+            wrapper->queues[0].enqueueReadBuffer(huBuf, CL_TRUE, 0, sourceCount*sizeof(float), huResult);
             
             float delta = 1e-3;
             
@@ -581,7 +581,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             } else {
                 try {
                     wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup));
-                    wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_BLOCKING, 0, size*sizeof(float), values2);
+                    wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, size*sizeof(float), values2);
                 } catch(cl::Error &e) {
                     wrapper->handleError(e);
                 }
@@ -629,7 +629,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             
             try {
                 wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(groupCount), cl::NullRange);
-                wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_BLOCKING, 0, size*sizeof(float), values2);
+                wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, size*sizeof(float), values2);
             } catch(cl::Error &e) {
                 wrapper->handleError(e);
             }

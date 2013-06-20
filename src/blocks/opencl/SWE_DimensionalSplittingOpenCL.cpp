@@ -124,7 +124,7 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
         }
     }
     
-    queues[0].flush();
+    queue.flush();
     
     // read result
     queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(float), &result, &waitList);

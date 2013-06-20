@@ -57,6 +57,8 @@ private:
            t += dimensionalSplitting.getMaxTimestep();
            dimensionalSplitting.updateUnknowns(dimensionalSplitting.getMaxTimestep());
            
+           const Float2D &h = dimensionalSplitting.getWaterHeight();
+           
            // Cells have been updates, check the results
            if(dir == DamBreak1DTestScenario::DIR_X) {
                // DamBreak is in X direction
@@ -65,8 +67,8 @@ private:
                for(int i = 1; i <= SIZE; i++) {
                    for(int j = 1; j < SIZE; j++) {
                        TS_ASSERT_DELTA(
-                           dimensionalSplitting.getWaterHeight()[i][j],
-                           dimensionalSplitting.getWaterHeight()[i][j+1],
+                           h[i][j],
+                           h[i][j+1],
                            TOLERANCE);
                    }
                }
@@ -78,8 +80,8 @@ private:
                for(int j = 1; j <= SIZE; j++) {
                    for(int i = 1; i < SIZE; i++) {
                        TS_ASSERT_DELTA(
-                           dimensionalSplitting.getWaterHeight()[i][j],
-                           dimensionalSplitting.getWaterHeight()[i+1][j],
+                           h[i][j],
+                           h[i+1][j],
                            TOLERANCE);
                    }
                }
@@ -111,9 +113,9 @@ private:
                for(int i = 1; i <= SIZE; i++) {
                    float height;
                    if(dir == DamBreak1DTestScenario::DIR_X) {
-                       height = dimensionalSplitting.getWaterHeight()[i][1];
+                       height = h[i][1];
                    } else {
-                       height = dimensionalSplitting.getWaterHeight()[1][i];
+                       height = h[1][i];
                    }
                    float check = DamBreak1DTestScenario::check[index][i-1];
                    TS_ASSERT_DELTA(

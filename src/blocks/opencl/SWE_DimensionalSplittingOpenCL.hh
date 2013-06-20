@@ -65,6 +65,13 @@ public:
     /// Print information about OpenCL devices used
     void printDeviceInformation();
     
+    /// Set conditions according to boundary types
+    /**
+     * The values will be updated using an OpenCL kernel in device memory
+     * to avoid a memory transfer from host to device
+     */
+    void setBoundaryConditions();
+    
     /// Simulate a single timestep.
     /**
      * @param dt The timestep

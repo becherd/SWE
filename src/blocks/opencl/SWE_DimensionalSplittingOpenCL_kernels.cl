@@ -254,3 +254,76 @@ __kernel void reduceMaximumCPU(
     
     values[start] = acc;
 }
+
+/// Kernel setting boundary conditions (OUTFLOW or WALL) on the left/right boundaries
+/**
+ * Kernel range should be set to (#rows)
+ * 
+ * @param h         Pointer to water heights
+ * @param hu        Pointer to horizontal water momentums
+ * @param hv        Pointer to vertical water momentums
+ * @param cols      Total number of columns in the grid (including ghosts)
+ * @param leftSign  Sign of the horizontal momentum at left boundary (-1 for WALL, +11 for OUTFLOW)
+ * @param rightSign Sign of the horizontal momentum at right boundary (-1 for WALL, +11 for OUTFLOW)
+ */
+__kernel void setLeftRightBoundary(
+    __global float* h,
+    __global float* hu,
+    __global float* hv,
+    __const uint cols,
+    __const float leftSign,
+    __const float rightSign)
+{
+    uint j = get_global_id(0);
+    
+    uint srcId = colMajor(1, j, get_global_size(0));
+    uint dstId = colMajor(0, j, get_global_size(0));
+    
+    h[dstId] = h[srcId];
+    hu[dstId] = leftSign*hu[srcId];
+    hv[dstId] = hv[srcId];
+    
+    srcId = colMajor((cols-1)-1, j, get_global_size(0));
+    dstId = colMajor((cols-1), j, get_global_size(0));
+    
+    h[dstId] = h[srcId];
+    hu[dstId] = rightSign*hu[srcId];
+    hv[dstId] = hv[srcId];
+}
+
+/// Kernel setting boundary conditions (OUTFLOW or WALL) on the top/bottom boundaries
+/**
+ * Kernel range should be set to (#cols)
+ * 
+ * @param h         Pointer to water heights
+ * @param hu        Pointer to horizontal water momentums
+ * @param hv        Pointer to vertical water momentums
+ * @param rows      Total number of rows in the grid (including ghosts)
+ * @param bottomSign  Sign of the vertical momentum at bottom boundary (-1 for WALL, +1 for OUTFLOW)
+ * @param topSign   Sign of the vertical momentum at top boundary (-1 for WALL, +1 for OUTFLOW)
+
+ */
+__kernel void setBottomTopBoundary(
+    __global float* h,
+    __global float* hu,
+    __global float* hv,
+    __const uint rows,
+    __const float bottomSign,
+    __const float topSign)
+{
+    uint i = get_global_id(0);
+    
+    uint srcId = colMajor(i, 1, rows);
+    uint dstId = colMajor(i, 0, rows);
+    
+    h[dstId] = h[srcId];
+    hu[dstId] = hu[srcId];
+    hv[dstId] = bottomSign*hv[srcId];
+    
+    srcId = colMajor(i, (rows-1)-1, rows);
+    dstId = colMajor(i, (rows-1), rows);
+    
+    h[dstId] = h[srcId];
+    hu[dstId] = hu[srcId];
+    hv[dstId] = topSign*hv[srcId];
+}

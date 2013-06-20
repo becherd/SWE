@@ -138,6 +138,35 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
     waveSpeeds = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
 }
 
+void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
+{
+    cl::Kernel *k;
+    
+    // Set boundary conditions at left and right boundary
+    k = &(kernels["setLeftRightBoundary"]);
+    k->setArg(0, hd);
+    k->setArg(1, hud);
+    k->setArg(2, hvd);
+    k->setArg(3, h.getCols());
+    k->setArg(4, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
+    k->setArg(5, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
+    
+    queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange);
+    
+    // Set boundary conditions at top and bottom boundary
+    k = &(kernels["setBottomTopBoundary"]);
+    k->setArg(0, hd);
+    k->setArg(1, hud);
+    k->setArg(2, hvd);
+    k->setArg(3, h.getRows());
+    k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
+    k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+    
+    queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()), cl::NullRange);
+    
+    queues[0].finish();
+}
+
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()
 {
     if(unifiedMemory) return;

@@ -186,21 +186,21 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
     size_t bufferSize = x * y * sizeof(cl_float);
     
     try {
-        hd = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        hud = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        hvd = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        bd = cl::Buffer(context, CL_MEM_READ_ONLY, bufferSize);
+        hd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        hud.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        hvd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        bd.push_back(cl::Buffer(context, CL_MEM_READ_ONLY, bufferSize));
     } catch(cl::Error &e) {
         handleError(e, "Unable to create variable buffers");
     }
     
     // These buffers are named for Xsweep but will also be used in the Ysweep
     try {
-        hNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        hNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        huNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        huNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-        waveSpeeds = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        hNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        hNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        huNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        huNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
+        waveSpeeds.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
     } catch(cl::Error &e) {
         handleError(e, "Unable to create update buffers");
     }
@@ -214,9 +214,9 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     // Set boundary conditions at left and right boundary
     k = &(kernels["setLeftRightBoundary"]);
-    k->setArg(0, hd);
-    k->setArg(1, hud);
-    k->setArg(2, hvd);
+    k->setArg(0, hd[0]);
+    k->setArg(1, hud[0]);
+    k->setArg(2, hvd[0]);
     k->setArg(3, h.getCols());
     k->setArg(4, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
     k->setArg(5, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
@@ -226,9 +226,9 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     // Set boundary conditions at top and bottom boundary
     k = &(kernels["setBottomTopBoundary"]);
-    k->setArg(0, hd);
-    k->setArg(1, hud);
-    k->setArg(2, hvd);
+    k->setArg(0, hd[0]);
+    k->setArg(1, hud[0]);
+    k->setArg(2, hvd[0]);
     k->setArg(3, h.getRows());
     k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
     k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
@@ -245,16 +245,16 @@ void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
     
     size_t bufferSize = h.getRows()*h.getCols()*sizeof(cl_float);
     
-    queues[0].enqueueWriteBuffer(hd, CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
+    queues[0].enqueueWriteBuffer(hd[0], CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueWriteBuffer(hud, CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
+    queues[0].enqueueWriteBuffer(hud[0], CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueWriteBuffer(hvd, CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
+    queues[0].enqueueWriteBuffer(hvd[0], CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueWriteBuffer(bd, CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
+    queues[0].enqueueWriteBuffer(bd[0], CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
     events.push_back(event);
     
     // Wait until all transfers have finished
@@ -263,7 +263,7 @@ void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()
 {
-    queues[0].enqueueWriteBuffer(hd, CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
+    queues[0].enqueueWriteBuffer(hd[0], CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
@@ -271,10 +271,10 @@ void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
     std::vector<cl::Event> events;
     cl::Event event;
     
-    queues[0].enqueueWriteBuffer(hud, CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
+    queues[0].enqueueWriteBuffer(hud[0], CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueWriteBuffer(hvd, CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
+    queues[0].enqueueWriteBuffer(hvd[0], CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
     events.push_back(event);
     
     // Wait until all transfers have finished
@@ -283,7 +283,7 @@ void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryAfterWrite()
 {
-    queues[0].enqueueWriteBuffer(bd, CL_TRUE, 0, b.getRows()*b.getCols()*sizeof(cl_float), b.elemVector());
+    queues[0].enqueueWriteBuffer(bd[0], CL_TRUE, 0, b.getRows()*b.getCols()*sizeof(cl_float), b.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
@@ -293,16 +293,16 @@ void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
     
     size_t bufferSize = h.getRows()*h.getCols()*sizeof(cl_float);
     
-    queues[0].enqueueReadBuffer(hd, CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
+    queues[0].enqueueReadBuffer(hd[0], CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueReadBuffer(hud, CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
+    queues[0].enqueueReadBuffer(hud[0], CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueReadBuffer(hvd, CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
+    queues[0].enqueueReadBuffer(hvd[0], CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueReadBuffer(bd, CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
+    queues[0].enqueueReadBuffer(bd[0], CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
     events.push_back(event);
     
     // Wait until all transfers have finished
@@ -311,7 +311,7 @@ void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightBeforeRead()
 {
-    queues[0].enqueueReadBuffer(hd, CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
+    queues[0].enqueueReadBuffer(hd[0], CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
@@ -319,10 +319,10 @@ void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
     std::vector<cl::Event> events;
     cl::Event event;
     
-    queues[0].enqueueReadBuffer(hud, CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
+    queues[0].enqueueReadBuffer(hud[0], CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
     events.push_back(event);
     
-    queues[0].enqueueReadBuffer(hvd, CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
+    queues[0].enqueueReadBuffer(hvd[0], CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
     events.push_back(event);
     
     // Wait until all transfers have finished
@@ -331,7 +331,7 @@ void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryBeforeRead()
 {
-    queues[0].enqueueReadBuffer(bd, CL_TRUE, 0, b.getCols()*b.getRows()*sizeof(cl_float), b.elemVector());
+    queues[0].enqueueReadBuffer(bd[0], CL_TRUE, 0, b.getCols()*b.getRows()*sizeof(cl_float), b.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
@@ -348,21 +348,21 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
     try {
         // enqueue X-Sweep Kernel
         k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
-        k->setArg(0, hd);
-        k->setArg(1, hud);
-        k->setArg(2, bd);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
-        k->setArg(7, waveSpeeds);
+        k->setArg(0, hd[0]);
+        k->setArg(1, hud[0]);
+        k->setArg(2, bd[0]);
+        k->setArg(3, hNetUpdatesLeft[0]);
+        k->setArg(4, hNetUpdatesRight[0]);
+        k->setArg(5, huNetUpdatesLeft[0]);
+        k->setArg(6, huNetUpdatesRight[0]);
+        k->setArg(7, waveSpeeds[0]);
 
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-1, h.getRows()), cl::NullRange, NULL, &xSweepNetUpdatesEvent);
         
         queues[0].flush();
         
         // reduce waveSpeed Maximum
-        float maxWaveSpeed = reduceMaximum(queues[0], waveSpeeds, (h.getCols()-1) * h.getRows(), &xSweepNetUpdatesEvent);
+        float maxWaveSpeed = reduceMaximum(queues[0], waveSpeeds[0], (h.getCols()-1) * h.getRows(), &xSweepNetUpdatesEvent);
         // calculate maximum timestep
         maxTimestep = dx/maxWaveSpeed * 0.4f;
 
@@ -370,26 +370,26 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
         float dt_dx = maxTimestep / dx;
         k->setArg(0, dt_dx);
-        k->setArg(1, hd);
-        k->setArg(2, hud);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
+        k->setArg(1, hd[0]);
+        k->setArg(2, hud[0]);
+        k->setArg(3, hNetUpdatesLeft[0]);
+        k->setArg(4, hNetUpdatesRight[0]);
+        k->setArg(5, huNetUpdatesLeft[0]);
+        k->setArg(6, huNetUpdatesRight[0]);
 
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-2, h.getRows()), cl::NullRange, NULL, &xSweepUpdateUnknownsEvent);
         waitList.push_back(xSweepUpdateUnknownsEvent);
 
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
-        k->setArg(0, hd);
-        k->setArg(1, hvd);
-        k->setArg(2, bd);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
-        k->setArg(7, waveSpeeds);
+        k->setArg(0, hd[0]);
+        k->setArg(1, hvd[0]);
+        k->setArg(2, bd[0]);
+        k->setArg(3, hNetUpdatesLeft[0]);
+        k->setArg(4, hNetUpdatesRight[0]);
+        k->setArg(5, huNetUpdatesLeft[0]);
+        k->setArg(6, huNetUpdatesRight[0]);
+        k->setArg(7, waveSpeeds[0]);
         
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-1), cl::NullRange, &waitList, &ySweepNetUpdatesEvent);
         waitList.clear();
@@ -399,12 +399,12 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);
         float dt_dy = maxTimestep / dy;
         k->setArg(0, dt_dy);
-        k->setArg(1, hd);
-        k->setArg(2, hvd);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
+        k->setArg(1, hd[0]);
+        k->setArg(2, hvd[0]);
+        k->setArg(3, hNetUpdatesLeft[0]);
+        k->setArg(4, hNetUpdatesRight[0]);
+        k->setArg(5, huNetUpdatesLeft[0]);
+        k->setArg(6, huNetUpdatesRight[0]);
         
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-2), cl::NullRange, &waitList, &ySweepUpdateUnknownsEvent);
         

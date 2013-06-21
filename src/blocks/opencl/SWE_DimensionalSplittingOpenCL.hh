@@ -14,25 +14,25 @@
  */
 class SWE_DimensionalSplittingOpenCL : public SWE_Block, public OpenCLWrapper {
 protected:
-    //! h variable buffer on computing device
-    cl::Buffer hd;
-    //! hu variable buffer on computing device
-    cl::Buffer hud;
-    //! hv variable buffer on computing device
-    cl::Buffer hvd;
-    //! b variable buffer on computing device
-    cl::Buffer bd;
+    //! h variable buffers on computing device
+    std::vector<cl::Buffer> hd;
+    //! hu variable buffers on computing device
+    std::vector<cl::Buffer> hud;
+    //! hv variable buffers on computing device
+    std::vector<cl::Buffer> hvd;
+    //! b variable buffers on computing device
+    std::vector<cl::Buffer> bd;
     
-    //! internal buffer for h net updates (left) on computing device
-    cl::Buffer hNetUpdatesLeft;
-    //! internal buffer for h net updates (right) on computing device
-    cl::Buffer hNetUpdatesRight;
-    //! internal buffer for hu net updates (left) on computing device
-    cl::Buffer huNetUpdatesLeft;
-    //! internal buffer for hu net updates (right) on computing device
-    cl::Buffer huNetUpdatesRight;
-    //! internal buffer for computed wavespeeds
-    cl::Buffer waveSpeeds;
+    //! internal buffers for h net updates (left) on computing device
+    std::vector<cl::Buffer> hNetUpdatesLeft;
+    //! internal buffers for h net updates (right) on computing device
+    std::vector<cl::Buffer> hNetUpdatesRight;
+    //! internal buffers for hu net updates (left) on computing device
+    std::vector<cl::Buffer> huNetUpdatesLeft;
+    //! internal buffers for hu net updates (right) on computing device
+    std::vector<cl::Buffer> huNetUpdatesRight;
+    //! internal buffers for computed wavespeeds
+    std::vector<cl::Buffer> waveSpeeds;
     
     //! SubBuffer column chunk size
     unsigned int chunkSize;

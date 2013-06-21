@@ -21,7 +21,6 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     getKernelSources(kernelSources);
     buildProgram(kernelSources);
     
-    unifiedMemory = devices[0].getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
     // TODO: enable multiple devices
     useDevices = 1;
     // useDevices = devices.size();
@@ -186,12 +185,11 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
     size_t colSize = y * sizeof(cl_float);
     size_t bufferSize = x * y * sizeof(cl_float);
     
-    cl_mem_flags flags = (unifiedMemory) ? CL_MEM_USE_HOST_PTR : 0;
     try {
-        hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? h.elemVector() : NULL));
-        hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hu.elemVector() : NULL));
-        hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hv.elemVector() : NULL));
-        bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, (unifiedMemory ? b.elemVector() : NULL));
+        hd = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        hud = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        hvd = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        bd = cl::Buffer(context, CL_MEM_READ_ONLY, bufferSize);
     } catch(cl::Error &e) {
         handleError(e, "Unable to create variable buffers");
     }
@@ -242,8 +240,6 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
 
 void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
 {
-    if(unifiedMemory) return;
-    
     std::vector<cl::Event> events;
     cl::Event event;
     
@@ -267,14 +263,11 @@ void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()
 {
-    if(unifiedMemory) return;
     queues[0].enqueueWriteBuffer(hd, CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
 {
-    if(unifiedMemory) return;
-    
     std::vector<cl::Event> events;
     cl::Event event;
     
@@ -290,14 +283,11 @@ void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryAfterWrite()
 {
-    if(unifiedMemory) return;
     queues[0].enqueueWriteBuffer(bd, CL_TRUE, 0, b.getRows()*b.getCols()*sizeof(cl_float), b.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
 {
-    if(unifiedMemory) return;
-    
     std::vector<cl::Event> events;
     cl::Event event;
     
@@ -321,14 +311,11 @@ void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightBeforeRead()
 {
-    if(unifiedMemory) return;
     queues[0].enqueueReadBuffer(hd, CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
 {
-    if(unifiedMemory) return;
-    
     std::vector<cl::Event> events;
     cl::Event event;
     
@@ -344,7 +331,6 @@ void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryBeforeRead()
 {
-    if(unifiedMemory) return;
     queues[0].enqueueReadBuffer(bd, CL_TRUE, 0, b.getCols()*b.getRows()*sizeof(cl_float), b.elemVector());
 }
 

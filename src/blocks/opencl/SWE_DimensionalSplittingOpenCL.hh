@@ -63,6 +63,18 @@ protected:
      */
     void calculateBufferChunks(size_t cols, size_t deviceCount);
     
+    /// Sync specified OpenCL buffers from compute devices to host memory
+    /**
+     * @param buffers A list of device buffers and corresponding host pointers
+     */
+    void syncBuffersBeforeRead(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers);
+    
+    /// Sync specified OpenCL buffers from host memory to compute devices
+    /**
+     * @param buffers A list of device buffers and corresponding host pointers
+     */
+    void syncBuffersAfterWrite(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers);
+    
     /// Get the properties to be used for OpenCL Command Queues (e.g. out-of-order execution)
     inline cl_command_queue_properties getCommandQueueProperties() {
         cl_command_queue_properties properties;

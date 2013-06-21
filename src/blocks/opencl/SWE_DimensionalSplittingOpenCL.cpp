@@ -185,6 +185,8 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
     size_t colSize = y * sizeof(cl_float);
     size_t bufferSize = x * y * sizeof(cl_float);
     
+    calculateBufferChunks(y, useDevices);
+    
     try {
         hd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
         hud.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
@@ -238,100 +240,110 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     queues[0].finish();
 }
 
-void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
-{
+void SWE_DimensionalSplittingOpenCL::syncBuffersBeforeRead(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers) {
     std::vector<cl::Event> events;
-    cl::Event event;
+    size_t y = h.getRows();
+    size_t colSize = sizeof(cl_float) * y;
     
-    size_t bufferSize = h.getRows()*h.getCols()*sizeof(cl_float);
-    
-    queues[0].enqueueWriteBuffer(hd[0], CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(hud[0], CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(hvd[0], CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(bd[0], CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
-    events.push_back(event);
+    for(unsigned int i = 0; i < buffers.size(); i++) {
+        for(unsigned int j = 0; j < useDevices; j++) {
+            cl::Event event;
+            size_t start = bufferChunks[j].first;
+            size_t length = bufferChunks[j].second;
+            size_t size = ((j == useDevices-1) ? length : (length-1)) * colSize;
+            float* dst = buffers[i].second + (start*y);
+            queues[j].enqueueReadBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, dst, NULL, &event);
+            events.push_back(event);
+        }
+    }
     
     // Wait until all transfers have finished
     cl::Event::waitForEvents(events);
+}
+
+void SWE_DimensionalSplittingOpenCL::syncBuffersAfterWrite(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers) {
+    std::vector<cl::Event> events;
+    size_t y = h.getRows();
+    size_t colSize = sizeof(cl_float) * y;
+    
+    for(unsigned int i = 0; i < buffers.size(); i++) {
+        for(unsigned int j = 0; j < useDevices; j++) {
+            cl::Event event;
+            size_t start = bufferChunks[j].first;
+            size_t length = bufferChunks[j].second;
+            size_t size = length * colSize;
+            float* src = buffers[i].second + (start*y);
+            queues[j].enqueueWriteBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, src, NULL, &event);
+            events.push_back(event);
+        }
+    }
+    
+    // Wait until all transfers have finished
+    cl::Event::waitForEvents(events);
+}
+
+void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
+{
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()
 {
-    queues[0].enqueueWriteBuffer(hd[0], CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
 {
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    queues[0].enqueueWriteBuffer(hud[0], CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(hvd[0], CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryAfterWrite()
 {
-    queues[0].enqueueWriteBuffer(bd[0], CL_TRUE, 0, b.getRows()*b.getCols()*sizeof(cl_float), b.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
 {
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    size_t bufferSize = h.getRows()*h.getCols()*sizeof(cl_float);
-    
-    queues[0].enqueueReadBuffer(hd[0], CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(hud[0], CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(hvd[0], CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(bd[0], CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightBeforeRead()
 {
-    queues[0].enqueueReadBuffer(hd[0], CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
 {
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    queues[0].enqueueReadBuffer(hud[0], CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(hvd[0], CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryBeforeRead()
 {
-    queues[0].enqueueReadBuffer(bd[0], CL_TRUE, 0, b.getCols()*b.getRows()*sizeof(cl_float), b.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()

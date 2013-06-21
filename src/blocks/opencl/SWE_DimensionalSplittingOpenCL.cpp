@@ -133,19 +133,31 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
 
 void SWE_DimensionalSplittingOpenCL::createBuffers()
 {
+    size_t x = h.getCols();
+    size_t y = h.getRows();
+    size_t colSize = y * sizeof(cl_float);
+    size_t bufferSize = x * y * sizeof(cl_float);
+    
     cl_mem_flags flags = (unifiedMemory) ? CL_MEM_USE_HOST_PTR : 0;
-    size_t bufferSize = h.getRows() * h.getCols() * sizeof(cl_float);
-    hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? h.elemVector() : NULL));
-    hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hu.elemVector() : NULL));
-    hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hv.elemVector() : NULL));
-    bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, (unifiedMemory ? b.elemVector() : NULL));
+    try {
+        hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? h.elemVector() : NULL));
+        hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hu.elemVector() : NULL));
+        hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hv.elemVector() : NULL));
+        bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, (unifiedMemory ? b.elemVector() : NULL));
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to create variable buffers");
+    }
     
     // These buffers are named for Xsweep but will also be used in the Ysweep
-    hNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    hNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    huNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    huNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    waveSpeeds = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    try {
+        hNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        hNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        huNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        huNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+        waveSpeeds = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to create update buffers");
+    }
 }
 
 void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()

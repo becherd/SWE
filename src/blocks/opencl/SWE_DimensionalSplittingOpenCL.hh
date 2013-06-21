@@ -42,6 +42,8 @@ protected:
     
     //! Whether computing devices and host have a unified memory
     bool unifiedMemory;
+    //! Number of devices that should be used
+    unsigned int useDevices;
     
     /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
     /**

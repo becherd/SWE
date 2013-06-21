@@ -22,13 +22,16 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     buildProgram(kernelSources);
     
     unifiedMemory = devices[0].getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
+    // TODO: enable multiple devices
+    useDevices = 1;
+    // useDevices = devices.size();
     
     createBuffers();
 }
 
 void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
 {
-    std::cout << "Using " << devices.size() << " OpenCL devices of type ";
+    std::cout << "Found " << devices.size() << " OpenCL devices of type ";
     switch(deviceType) {
         case CL_DEVICE_TYPE_CPU:
             std::cout << "CPU";
@@ -57,6 +60,8 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
             std::cerr << "Unable to query device info:" << e.what() << " (" << e.err() << ")" << std::endl;
         }
     }
+    
+    std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices." << std::endl;
     
     std::cout << std::endl;
 }

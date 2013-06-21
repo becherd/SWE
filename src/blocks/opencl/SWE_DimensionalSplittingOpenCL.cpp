@@ -180,31 +180,35 @@ void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t d
 
 void SWE_DimensionalSplittingOpenCL::createBuffers()
 {
-    size_t x = h.getCols();
     size_t y = h.getRows();
     size_t colSize = y * sizeof(cl_float);
-    size_t bufferSize = x * y * sizeof(cl_float);
     
     calculateBufferChunks(y, useDevices);
     
-    try {
-        hd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        hud.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        hvd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        bd.push_back(cl::Buffer(context, CL_MEM_READ_ONLY, bufferSize));
-    } catch(cl::Error &e) {
-        handleError(e, "Unable to create variable buffers");
-    }
-    
-    // These buffers are named for Xsweep but will also be used in the Ysweep
-    try {
-        hNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        hNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        huNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        huNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-        waveSpeeds.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize));
-    } catch(cl::Error &e) {
-        handleError(e, "Unable to create update buffers");
+    for(unsigned int i = 0; i < useDevices; i++) {
+        size_t size = colSize * bufferChunks[i].second;
+        try {
+            hd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            hud.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            hvd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            bd.push_back(cl::Buffer(context, CL_MEM_READ_ONLY, size));
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to create variable buffers");
+        }
+        
+        if(i == useDevices-1)
+            size -= colSize; // NetUpdates of last device is one column smaller
+        
+        // These buffers are named for Xsweep but will also be used in the Ysweep
+        try {
+            hNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            hNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            huNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            huNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            waveSpeeds.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to create update buffers");
+        }
     }
 }
 

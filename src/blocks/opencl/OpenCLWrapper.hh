@@ -42,8 +42,9 @@ protected:
     /**
      * @param e The OpenCL Error
      */
-    void handleError(cl::Error &e) {
-        std::cerr << "OpenCL Error: in " << e.what() << " (" << e.err() << ")" << std::endl;
+    void handleError(cl::Error &e, const char* msg = "") {
+        std::cerr << "OpenCL Error: " << msg
+                  << " in " << e.what() << " (" << e.err() << ")" << std::endl;
         exit(-1);
     }
     

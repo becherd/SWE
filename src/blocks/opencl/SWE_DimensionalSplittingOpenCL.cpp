@@ -131,6 +131,49 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
     return result;
 }
 
+void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t deviceCount) {
+    
+    /**
+    Example: 11 Columns, 3 Devices, Chunksize = 4
+    
+    <pre>
+    Updates       *-----*-----*--0--*-----*                                           
+                                          *-----*-----*--1--*-----*             
+                                                                  *--2--*      
+                                                                               
+    Edges         0     1     2     3     4     5     6     7     8     9
+            |     |     |     |     |     |     |     |     |     |     |     |
+    Cells   |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  10 |
+            |     |     |     |     |     |     |     |     |     |     |     |
+                                                                               
+    Vars    +--------------0--------------+                                    
+                                    +---------------1-------------+            
+                                                            +---------2-------+
+    </pre>
+    
+    In this example, the net updates at edges 4 and 8 must be copied
+    to the update buffers of device 0 and 1 respectively. After applying 
+    the netupdates on devices 0 and 1, the overlapping variable columns 
+    for h and hu must be copied back to the varible buffers of device 1
+    and 2 respectively. Note that hv does not have to be copied since 
+    the overlapping net updates only affect the X-Sweep (and not the Y-Sweep)
+    */
+    
+    chunkSize = static_cast <size_t> (std::ceil(float(cols) / deviceCount));
+    
+    size_t start = 0;
+    size_t end = 0;
+    
+    while(end < cols-1) {
+        end = start + chunkSize;
+        end = std::min(end, cols-1);
+        
+        bufferChunks.push_back( std::make_pair(start, end-start+1) );
+        
+        start = end;
+    }
+}
+
 void SWE_DimensionalSplittingOpenCL::createBuffers()
 {
     size_t x = h.getCols();

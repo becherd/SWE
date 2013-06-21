@@ -34,6 +34,12 @@ protected:
     //! internal buffer for computed wavespeeds
     cl::Buffer waveSpeeds;
     
+    //! SubBuffer column chunk size
+    unsigned int chunkSize;
+    
+    //! Buffer chunk sizes (start column index and length) for multiple devices
+    std::vector< std::pair<size_t, size_t> > bufferChunks;    
+    
     //! Whether computing devices and host have a unified memory
     bool unifiedMemory;
     
@@ -49,6 +55,13 @@ protected:
    
     /// Create OpenCL device buffers for h, hu, hv, and b variables
     void createBuffers();
+    
+    /// Calculate buffer chunk sizes for splitting domain among multiple devices
+    /**
+     * @param cols Total number of columns (including ghosts)
+     * @param deviceCount Total number of devices to be used
+     */
+    void calculateBufferChunks(size_t cols, size_t deviceCount);
     
     /// Get the properties to be used for OpenCL Command Queues (e.g. out-of-order execution)
     inline cl_command_queue_properties getCommandQueueProperties() {

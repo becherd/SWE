@@ -294,7 +294,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
         k->setArg(0, hd[useDevices-1]);
         k->setArg(1, hud[useDevices-1]);
         k->setArg(2, hvd[useDevices-1]);
-        k->setArg(3, bufferChunks[useDevices-1].second);
+        k->setArg(3, (unsigned int)bufferChunks[useDevices-1].second);
         k->setArg(4, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
     } catch(cl::Error &e) {
         handleError(e, "Unable to set setRightBoundary kernel arguments");

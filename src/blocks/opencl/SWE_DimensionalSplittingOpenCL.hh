@@ -14,41 +14,70 @@
  */
 class SWE_DimensionalSplittingOpenCL : public SWE_Block, public OpenCLWrapper {
 protected:
-    //! h variable buffer on computing device
-    cl::Buffer hd;
-    //! hu variable buffer on computing device
-    cl::Buffer hud;
-    //! hv variable buffer on computing device
-    cl::Buffer hvd;
-    //! b variable buffer on computing device
-    cl::Buffer bd;
+    //! h variable buffers on computing device
+    std::vector<cl::Buffer> hd;
+    //! hu variable buffers on computing device
+    std::vector<cl::Buffer> hud;
+    //! hv variable buffers on computing device
+    std::vector<cl::Buffer> hvd;
+    //! b variable buffers on computing device
+    std::vector<cl::Buffer> bd;
     
-    //! internal buffer for h net updates (left) on computing device
-    cl::Buffer hNetUpdatesLeft;
-    //! internal buffer for h net updates (right) on computing device
-    cl::Buffer hNetUpdatesRight;
-    //! internal buffer for hu net updates (left) on computing device
-    cl::Buffer huNetUpdatesLeft;
-    //! internal buffer for hu net updates (right) on computing device
-    cl::Buffer huNetUpdatesRight;
-    //! internal buffer for computed wavespeeds
-    cl::Buffer waveSpeeds;
+    //! internal buffers for h net updates (left) on computing device
+    std::vector<cl::Buffer> hNetUpdatesLeft;
+    //! internal buffers for h net updates (right) on computing device
+    std::vector<cl::Buffer> hNetUpdatesRight;
+    //! internal buffers for hu net updates (left) on computing device
+    std::vector<cl::Buffer> huNetUpdatesLeft;
+    //! internal buffers for hu net updates (right) on computing device
+    std::vector<cl::Buffer> huNetUpdatesRight;
+    //! internal buffers for computed wavespeeds
+    std::vector<cl::Buffer> waveSpeeds;
     
-    //! Whether computing devices and host have a unified memory
-    bool unifiedMemory;
+    //! SubBuffer column chunk size
+    unsigned int chunkSize;
+    
+    //! Buffer chunk sizes (start column index and length) for multiple devices
+    std::vector< std::pair<size_t, size_t> > bufferChunks;    
+    
+    //! Number of devices that should be used
+    unsigned int useDevices;
     
     /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
     /**
      * @param queue The command queue to perform the reduction on
-     * @param buffer The buffer the reduce
+     * @param buffer The buffer to reduce
      * @param length The length of the array
      * @param waitEvent OpenCL queue event to wait for before starting
-     * @return The reduced maximum value
+     * @param event The event returned by the last reduce operation (should be waited on to read result)
      */
-    float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent = NULL);
+    void reduceMaximum(cl::CommandQueue &queue,
+                        cl::Buffer &buffer,
+                        unsigned int length,
+                        cl::Event *waitEvent = NULL,
+                        cl::Event *event = NULL);
    
     /// Create OpenCL device buffers for h, hu, hv, and b variables
     void createBuffers();
+    
+    /// Calculate buffer chunk sizes for splitting domain among multiple devices
+    /**
+     * @param cols Total number of columns (including ghosts)
+     * @param deviceCount Total number of devices to be used
+     */
+    void calculateBufferChunks(size_t cols, size_t deviceCount);
+    
+    /// Sync specified OpenCL buffers from compute devices to host memory
+    /**
+     * @param buffers A list of device buffers and corresponding host pointers
+     */
+    void syncBuffersBeforeRead(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers);
+    
+    /// Sync specified OpenCL buffers from host memory to compute devices
+    /**
+     * @param buffers A list of device buffers and corresponding host pointers
+     */
+    void syncBuffersAfterWrite(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers);
     
     /// Get the properties to be used for OpenCL Command Queues (e.g. out-of-order execution)
     inline cl_command_queue_properties getCommandQueueProperties() {
@@ -70,10 +99,12 @@ public:
      * @param l_dx The mesh size of the Cartesian grid in x-direction
      * @param l_dy The mesh size of the Cartesian grid in y-direction
      * @param preferredDeviceType The preferred OpenCL device type to use for computation
+     * @param maxDevices Maximum number of computing devices to be used (0 = unlimited)
      */
     SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
         float l_dx, float l_dy,
-        cl_device_type preferredDeviceType = 0);
+        cl_device_type preferredDeviceType = 0,
+        unsigned int maxDevices = 0);
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();

@@ -13,7 +13,8 @@
 
 SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
     float l_dx, float l_dy,
-    cl_device_type preferredDeviceType):
+    cl_device_type preferredDeviceType,
+    unsigned int maxDevices):
     SWE_Block(l_nx, l_ny, l_dx, l_dy),
     OpenCLWrapper(preferredDeviceType, getCommandQueueProperties())
 {
@@ -21,14 +22,17 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     getKernelSources(kernelSources);
     buildProgram(kernelSources);
     
-    unifiedMemory = devices[0].getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
+    if(maxDevices == 0)
+        useDevices = devices.size();
+    else
+        useDevices = std::min((size_t)maxDevices, devices.size());
     
     createBuffers();
 }
 
 void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
 {
-    std::cout << "Using " << devices.size() << " OpenCL devices of type ";
+    std::cout << "Found " << devices.size() << " OpenCL devices of type ";
     switch(deviceType) {
         case CL_DEVICE_TYPE_CPU:
             std::cout << "CPU";
@@ -58,12 +62,13 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
         }
     }
     
+    std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices." << std::endl;
+    
     std::cout << std::endl;
 }
 
-float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent) {
+void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent, cl::Event *event) {
     cl::Kernel *k;
-    float result;
     
     // List of events a kernel has to wait for
     std::vector<cl::Event> waitList;
@@ -81,17 +86,32 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
         unsigned int items = (unsigned int)ceil((float)length/(float)(block*stride));
         
         while(items > 1) {
-            k->setArg(0, buffer);
-            k->setArg(1, length);
-            k->setArg(2, block);
-            k->setArg(3, stride);
+            try {
+                k->setArg(0, buffer);
+                k->setArg(1, length);
+                k->setArg(2, block);
+                k->setArg(3, stride);
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to set reduceMaximumCPU kernel arguments");
+            }
             
             items = (unsigned int)ceil((float)length/(float)(block*stride));
             
-            cl::Event event;
-            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, &event);
-            waitList.clear();
-            waitList.push_back(event);
+            cl::Event *e;
+            cl::Event localEvent;
+            if(items > 1)
+                e = &localEvent;
+            else
+                e = event;    
+            try {
+                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);                
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to enqueue reduceMaximumCPU kernel");
+            }
+            if(items > 1) {
+                waitList.clear();
+                waitList.push_back(*e);
+            }
             
             stride *= block;
         }
@@ -106,46 +126,119 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
         unsigned int groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
         unsigned int globalSize = workGroup*groupCount;
         
+        assert(groupCount > 1);
+        
         while(groupCount > 1) {
-            k->setArg(0, buffer);
-            k->setArg(1, length);
-            k->setArg(2, stride);
-            k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
+            try {
+                k->setArg(0, buffer);
+                k->setArg(1, length);
+                k->setArg(2, stride);
+                k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to set reduceMaximum kernel arguments");
+            }
             
             groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
             globalSize = workGroup*groupCount;
             
-            cl::Event event;
-            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, &event);
-            waitList.clear();
-            waitList.push_back(event);
+            cl::Event *e;
+            cl::Event localEvent;
+            if(groupCount > 1)
+                e = &localEvent;
+            else
+                e = event;
+            try {
+                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);                
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to enqueue reduceMaximum kernel");
+            }
+            if(groupCount > 1) {
+                waitList.clear();
+                waitList.push_back(*e);
+            }
             
             stride *= workGroup;
         }
     }
     
     queue.flush();
+}
+
+void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t deviceCount) {
     
-    // read result
-    queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(float), &result, &waitList);
-    return result;
+    /**
+    Example: 11 Columns, 3 Devices, Chunksize = 4
+    
+    <pre>
+    Updates       *-----*-----*--0--*-----*                                           
+                                          *-----*-----*--1--*-----*             
+                                                                  *--2--*      
+                                                                               
+    Edges         0     1     2     3     4     5     6     7     8     9
+            |     |     |     |     |     |     |     |     |     |     |     |
+    Cells   |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  10 |
+            |     |     |     |     |     |     |     |     |     |     |     |
+                                                                               
+    Vars    +--------------0--------------+                                    
+                                    +---------------1-------------+            
+                                                            +---------2-------+
+    </pre>
+    
+    In this example, the net updates at edges 4 and 8 must be copied
+    to the update buffers of device 0 and 1 respectively. After applying 
+    the netupdates on devices 0 and 1, the overlapping variable columns 
+    for h and hu must be copied back to the varible buffers of device 1
+    and 2 respectively. Note that hv does not have to be copied since 
+    the overlapping net updates only affect the X-Sweep (and not the Y-Sweep)
+    */
+    
+    chunkSize = static_cast <size_t> (std::ceil(float(cols) / deviceCount));
+    
+    size_t start = 0;
+    size_t end = 0;
+    
+    while(end < cols-1) {
+        end = start + chunkSize;
+        end = std::min(end, cols-1);
+        
+        bufferChunks.push_back( std::make_pair(start, end-start+1) );
+        
+        start = end;
+    }
 }
 
 void SWE_DimensionalSplittingOpenCL::createBuffers()
 {
-    cl_mem_flags flags = (unifiedMemory) ? CL_MEM_USE_HOST_PTR : 0;
-    size_t bufferSize = h.getRows() * h.getCols() * sizeof(cl_float);
-    hd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? h.elemVector() : NULL));
-    hud = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hu.elemVector() : NULL));
-    hvd = cl::Buffer(context, (CL_MEM_READ_WRITE | flags), bufferSize, (unifiedMemory ? hv.elemVector() : NULL));
-    bd = cl::Buffer(context, (CL_MEM_READ_ONLY | flags), bufferSize, (unifiedMemory ? b.elemVector() : NULL));
+    size_t y = h.getRows();
+    size_t colSize = y * sizeof(cl_float);
     
-    // These buffers are named for Xsweep but will also be used in the Ysweep
-    hNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    hNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    huNetUpdatesLeft = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    huNetUpdatesRight = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
-    waveSpeeds = cl::Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+    calculateBufferChunks(y, useDevices);
+    
+    for(unsigned int i = 0; i < useDevices; i++) {
+        size_t size = colSize * bufferChunks[i].second;
+        try {
+            hd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            hud.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            hvd.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            bd.push_back(cl::Buffer(context, CL_MEM_READ_ONLY, size));
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to create variable buffers");
+        }
+        
+        if(i == useDevices-1)
+            size -= colSize; // NetUpdates of last device is one column smaller
+        
+        // These buffers are named for Xsweep but will also be used in the Ysweep
+        try {
+            hNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            hNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            huNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            huNetUpdatesRight.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+            waveSpeeds.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to create update buffers");
+        }
+    }
 }
 
 void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
@@ -154,215 +247,355 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     std::vector<cl::Event> waitList;
     cl::Event event;
     
-    // Set boundary conditions at left and right boundary
-    k = &(kernels["setLeftRightBoundary"]);
-    k->setArg(0, hd);
-    k->setArg(1, hud);
-    k->setArg(2, hvd);
-    k->setArg(3, h.getCols());
-    k->setArg(4, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
-    k->setArg(5, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
-    
-    queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
-    waitList.push_back(event);
-    
     // Set boundary conditions at top and bottom boundary
     k = &(kernels["setBottomTopBoundary"]);
-    k->setArg(0, hd);
-    k->setArg(1, hud);
-    k->setArg(2, hvd);
-    k->setArg(3, h.getRows());
-    k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
-    k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+    for(unsigned int i = 0; i < useDevices; i++) {
+        try {
+            k->setArg(0, hd[i]);
+            k->setArg(1, hud[i]);
+            k->setArg(2, hvd[i]);
+            k->setArg(3, h.getRows());
+            k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
+            k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to set setBottomTopBoundary kernel arguments");
+        }
+        
+        size_t length = bufferChunks[i].second;
+        try {
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length), cl::NullRange, NULL, &event);
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to enqueue setBottomTopBoundary kernel");
+        }
+
+        waitList.push_back(event);
+    }
     
-    queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()), cl::NullRange, &waitList);
+    // Set boundary conditions at left boundary
+    k = &(kernels["setLeftBoundary"]);
+    try {
+        k->setArg(0, hd[0]);
+        k->setArg(1, hud[0]);
+        k->setArg(2, hvd[0]);
+        k->setArg(3, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set setLeftBoundary kernel arguments");
+    }
     
-    queues[0].finish();
+    try {
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to enqueue setLeftBoundary kernel");
+    }
+    
+    waitList.push_back(event);
+    
+    // Set boundary conditions at right boundary
+    k = &(kernels["setRightBoundary"]);
+    try {
+        k->setArg(0, hd[useDevices-1]);
+        k->setArg(1, hud[useDevices-1]);
+        k->setArg(2, hvd[useDevices-1]);
+        k->setArg(3, (unsigned int)bufferChunks[useDevices-1].second);
+        k->setArg(4, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set setRightBoundary kernel arguments");
+    }
+    
+    try {
+        queues[useDevices-1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to enqueue setRightBoundary kernel");
+    }
+    
+    waitList.push_back(event);
+    
+    for(unsigned int i = 0; i < useDevices; i++)
+        queues[i].flush();
+    
+    cl::Event::waitForEvents(waitList);
+}
+
+void SWE_DimensionalSplittingOpenCL::syncBuffersBeforeRead(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers) {
+    std::vector<cl::Event> events;
+    size_t y = h.getRows();
+    size_t colSize = sizeof(cl_float) * y;
+    
+    for(unsigned int i = 0; i < buffers.size(); i++) {
+        for(unsigned int j = 0; j < useDevices; j++) {
+            cl::Event event;
+            size_t start = bufferChunks[j].first;
+            size_t length = bufferChunks[j].second;
+            size_t size = ((j == useDevices-1) ? length : (length-1)) * colSize;
+            float* dst = buffers[i].second + (start*y);
+            queues[j].enqueueReadBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, dst, NULL, &event);
+            events.push_back(event);
+        }
+    }
+    
+    // Wait until all transfers have finished
+    cl::Event::waitForEvents(events);
+}
+
+void SWE_DimensionalSplittingOpenCL::syncBuffersAfterWrite(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers) {
+    std::vector<cl::Event> events;
+    size_t y = h.getRows();
+    size_t colSize = sizeof(cl_float) * y;
+    
+    for(unsigned int i = 0; i < buffers.size(); i++) {
+        for(unsigned int j = 0; j < useDevices; j++) {
+            cl::Event event;
+            size_t start = bufferChunks[j].first;
+            size_t length = bufferChunks[j].second;
+            size_t size = length * colSize;
+            float* src = buffers[i].second + (start*y);
+            queues[j].enqueueWriteBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, src, NULL, &event);
+            events.push_back(event);
+        }
+    }
+    
+    // Wait until all transfers have finished
+    cl::Event::waitForEvents(events);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchAfterWrite()
 {
-    if(unifiedMemory) return;
-    
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    size_t bufferSize = h.getRows()*h.getCols()*sizeof(cl_float);
-    
-    queues[0].enqueueWriteBuffer(hd, CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(hud, CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(hvd, CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(bd, CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightAfterWrite()
 {
-    if(unifiedMemory) return;
-    queues[0].enqueueWriteBuffer(hd, CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeAfterWrite()
 {
-    if(unifiedMemory) return;
-    
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    queues[0].enqueueWriteBuffer(hud, CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueWriteBuffer(hvd, CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryAfterWrite()
 {
-    if(unifiedMemory) return;
-    queues[0].enqueueWriteBuffer(bd, CL_TRUE, 0, b.getRows()*b.getCols()*sizeof(cl_float), b.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersAfterWrite(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBeforeRead()
 {
-    if(unifiedMemory) return;
-    
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    size_t bufferSize = h.getRows()*h.getCols()*sizeof(cl_float);
-    
-    queues[0].enqueueReadBuffer(hd, CL_FALSE, 0, bufferSize, h.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(hud, CL_FALSE, 0, bufferSize, hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(hvd, CL_FALSE, 0, bufferSize, hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(bd, CL_FALSE, 0, bufferSize, b.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchWaterHeightBeforeRead()
 {
-    if(unifiedMemory) return;
-    queues[0].enqueueReadBuffer(hd, CL_TRUE, 0, h.getRows()*h.getCols()*sizeof(cl_float), h.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hd, h.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchDischargeBeforeRead()
 {
-    if(unifiedMemory) return;
-    
-    std::vector<cl::Event> events;
-    cl::Event event;
-    
-    queues[0].enqueueReadBuffer(hud, CL_FALSE, 0, hu.getRows()*hu.getCols()*sizeof(cl_float), hu.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    queues[0].enqueueReadBuffer(hvd, CL_FALSE, 0, hv.getRows()*hv.getCols()*sizeof(cl_float), hv.elemVector(), NULL, &event);
-    events.push_back(event);
-    
-    // Wait until all transfers have finished
-    cl::Event::waitForEvents(events);
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&hud, hu.elemVector()));
+    buffers.push_back(std::make_pair(&hvd, hv.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::synchBathymetryBeforeRead()
 {
-    if(unifiedMemory) return;
-    queues[0].enqueueReadBuffer(bd, CL_TRUE, 0, b.getCols()*b.getRows()*sizeof(cl_float), b.elemVector());
+    std::vector< std::pair< std::vector<cl::Buffer>*, float*> > buffers;
+    buffers.push_back(std::make_pair(&bd, b.elemVector()));
+    syncBuffersBeforeRead(buffers);
 }
 
 void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
 {
     // Pointer to kernel object
     cl::Kernel *k;
+    // Number of rows
+    size_t y = h.getRows();
+    // Size of a column (in bytes)
+    size_t colSize = y*sizeof(cl_float);
+    // Length variable (number of cols per chunk)
+    size_t length;
     
     // Event waitlist for various kernel enqueues
     std::vector<cl::Event> waitList;
-    cl::Event xSweepNetUpdatesEvent;
-    cl::Event ySweepNetUpdatesEvent;
-    cl::Event xSweepUpdateUnknownsEvent;
-    cl::Event ySweepUpdateUnknownsEvent;
+    // Device specific event waitList
+    std::vector< std::vector<cl::Event> > deviceWaitList;
+    for(unsigned int i = 0; i < useDevices; i++)
+        deviceWaitList.push_back(std::vector<cl::Event>());
+    
     try {
         // enqueue X-Sweep Kernel
         k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
-        k->setArg(0, hd);
-        k->setArg(1, hud);
-        k->setArg(2, bd);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
-        k->setArg(7, waveSpeeds);
-
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-1, h.getRows()), cl::NullRange, NULL, &xSweepNetUpdatesEvent);
         
-        queues[0].flush();
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, hd[i]);
+            k->setArg(1, hud[i]);
+            k->setArg(2, bd[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            k->setArg(7, waveSpeeds[i]);
+            
+            length = bufferChunks[i].second;
+            
+            cl::Event sweepEvent;
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, NULL, &sweepEvent);
+            
+            // reduce waveSpeed Maximum
+            cl::Event maximumEvent;
+            reduceMaximum(queues[i], waveSpeeds[i], (length-1) * y, &sweepEvent, &maximumEvent);
+            waitList.push_back(maximumEvent);
+        }
         
-        // reduce waveSpeed Maximum
-        float maxWaveSpeed = reduceMaximum(queues[0], waveSpeeds, (h.getCols()-1) * h.getRows(), &xSweepNetUpdatesEvent);
+        cl::Event::waitForEvents(waitList);
+        waitList.clear();
+        
+        // Read maximum
+        float maxWaveSpeed = -INFINITY;
+        for(unsigned int i = 0; i < useDevices; i++) {
+            float result;
+            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result);
+            maxWaveSpeed = std::max(maxWaveSpeed, result);
+        }
+        
         // calculate maximum timestep
         maxTimestep = dx/maxWaveSpeed * 0.4f;
-
+        
+        // Copy net update buffers at edges from device n+1 to device n
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            length = bufferChunks[i].second;
+            size_t offset = (length-1)*colSize;
+            cl::Event e;
+            queues[i].enqueueCopyBuffer(hNetUpdatesLeft[i+1], hNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+            queues[i].enqueueCopyBuffer(hNetUpdatesRight[i+1], hNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+            queues[i].enqueueCopyBuffer(huNetUpdatesLeft[i+1], huNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+            queues[i].enqueueCopyBuffer(huNetUpdatesRight[i+1], huNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+        }
+        
         // enqueue updateUnknowns Kernel (X-Sweep)
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
         float dt_dx = maxTimestep / dx;
-        k->setArg(0, dt_dx);
-        k->setArg(1, hd);
-        k->setArg(2, hud);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
-
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-2, h.getRows()), cl::NullRange, NULL, &xSweepUpdateUnknownsEvent);
-        waitList.push_back(xSweepUpdateUnknownsEvent);
-
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, dt_dx);
+            k->setArg(1, hd[i]);
+            k->setArg(2, hud[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            
+            cl::Event e;
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--; // If this is the last buffer, do not try to update the last column
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, &deviceWaitList[i], &e);
+            waitList.push_back(e);
+        }
+        
+        // Copy updates edges between buffers from device n to n+1
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            length = bufferChunks[i].second;
+            size_t offset = (length-1)*colSize;
+            cl::Event e;
+            deviceWaitList[i+1].clear();
+            
+            queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            deviceWaitList[i+1].push_back(e);
+            queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
+            deviceWaitList[i+1].push_back(e);
+            // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
+        }
+        
+        waitList.clear();
+        
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
-        k->setArg(0, hd);
-        k->setArg(1, hvd);
-        k->setArg(2, bd);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
-        k->setArg(7, waveSpeeds);
-        
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-1), cl::NullRange, &waitList, &ySweepNetUpdatesEvent);
-        waitList.clear();
-        waitList.push_back(ySweepNetUpdatesEvent);
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, hd[i]);
+            k->setArg(1, hvd[i]);
+            k->setArg(2, bd[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            k->setArg(7, waveSpeeds[i]);
+            
+            cl::Event e;
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--;
+            
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-1), cl::NullRange, &deviceWaitList[i], &e);
+            deviceWaitList[i].clear();
+            deviceWaitList[i].push_back(e);
+        }
 
         // enqueue netUpdate Kernel (Y-Sweep)
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);
         float dt_dy = maxTimestep / dy;
-        k->setArg(0, dt_dy);
-        k->setArg(1, hd);
-        k->setArg(2, hvd);
-        k->setArg(3, hNetUpdatesLeft);
-        k->setArg(4, hNetUpdatesRight);
-        k->setArg(5, huNetUpdatesLeft);
-        k->setArg(6, huNetUpdatesRight);
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, dt_dy);
+            k->setArg(1, hd[i]);
+            k->setArg(2, hvd[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            
+            
+            cl::Event e;
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--;
+            
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-2), cl::NullRange, &deviceWaitList[i], &e);
+            waitList.push_back(e);
+        }
         
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-2), cl::NullRange, &waitList, &ySweepUpdateUnknownsEvent);
+        // Copy updated edge columns after Y-Sweep so we ensure that the overlapping 
+        // edge columns really have identical values
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            length = bufferChunks[i].second;
+            size_t offset = (length-1)*colSize;
+            cl::Event e;
+            deviceWaitList[i+1].clear();
+            
+            queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            waitList.push_back(e);
+            queues[i+1].enqueueCopyBuffer(hvd[i], hvd[i+1], offset, 0, colSize, &waitList, &e);
+            waitList.push_back(e);
+            // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
+        }
         
-        queues[0].finish();
+        for(unsigned int i = 0; i < useDevices; i++)
+            queues[i].flush();
+        
+        cl::Event::waitForEvents(waitList);
     } catch(cl::Error &e) {
         handleError(e);
     }

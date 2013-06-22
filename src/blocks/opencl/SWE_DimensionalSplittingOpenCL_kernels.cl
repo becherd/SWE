@@ -255,7 +255,48 @@ __kernel void reduceMaximumCPU(
     values[start] = acc;
 }
 
-/// Kernel setting boundary conditions (OUTFLOW or WALL) on the left/right boundaries
+/// Kernel setting boundary conditions (OUTFLOW or WALL) on the left boundary
+/**
+ * Kernel range should be set to (#rows)
+ * 
+ * @param h         Pointer to water heights
+ * @param hu        Pointer to horizontal water momentums
+ * @param hv        Pointer to vertical water momentums
+ * @param left      Sign Sign of the horizontal momentum at left boundary (-1 for WALL, +1 for OUTFLOW)
+ */
+__kernel void setLeftBoundary(
+    __global float* h,
+    __global float* hu,
+    __global float* hv,
+    __const float leftSign)
+{
+    uint j = get_global_id(0);
+    
+    size_t srcId = colMajor(1, j, get_global_size(0));
+    size_t dstId = colMajor(0, j, get_global_size(0));
+    
+    h[dstId] = h[srcId];
+    hu[dstId] = leftSign*hu[srcId];
+    hv[dstId] = hv[srcId];
+    
+    if(j == 0) {
+        // first row, set corner
+        srcId = colMajor(1, 1, get_global_size(0));
+        h[dstId] = h[srcId];
+        hu[dstId] = hu[srcId];
+        hv[dstId] = hv[srcId];
+    }
+    
+    if(j == get_global_size(0)-1) {
+        // last row, set corner
+        srcId = colMajor(1, j-1, get_global_size(0));
+        h[dstId] = h[srcId];
+        hu[dstId] = hu[srcId];
+        hv[dstId] = hv[srcId];
+    }
+}
+
+/// Kernel setting boundary conditions (OUTFLOW or WALL) on the right boundary
 /**
  * Kernel range should be set to (#rows)
  * 
@@ -263,32 +304,39 @@ __kernel void reduceMaximumCPU(
  * @param hu        Pointer to horizontal water momentums
  * @param hv        Pointer to vertical water momentums
  * @param cols      Total number of columns in the grid (including ghosts)
- * @param leftSign  Sign of the horizontal momentum at left boundary (-1 for WALL, +11 for OUTFLOW)
  * @param rightSign Sign of the horizontal momentum at right boundary (-1 for WALL, +11 for OUTFLOW)
  */
-__kernel void setLeftRightBoundary(
+__kernel void setRightBoundary(
     __global float* h,
     __global float* hu,
     __global float* hv,
     __const uint cols,
-    __const float leftSign,
     __const float rightSign)
 {
     uint j = get_global_id(0);
     
-    uint srcId = colMajor(1, j, get_global_size(0));
-    uint dstId = colMajor(0, j, get_global_size(0));
-    
-    h[dstId] = h[srcId];
-    hu[dstId] = leftSign*hu[srcId];
-    hv[dstId] = hv[srcId];
-    
-    srcId = colMajor((cols-1)-1, j, get_global_size(0));
-    dstId = colMajor((cols-1), j, get_global_size(0));
+    size_t srcId = colMajor((cols-1)-1, j, get_global_size(0));
+    size_t dstId = colMajor((cols-1), j, get_global_size(0));
     
     h[dstId] = h[srcId];
     hu[dstId] = rightSign*hu[srcId];
     hv[dstId] = hv[srcId];
+    
+    if(j == 0) {
+        // first row, set corner
+        srcId = colMajor((cols-1)-1, 1, get_global_size(0));
+        h[dstId] = h[srcId];
+        hu[dstId] = hu[srcId];
+        hv[dstId] = hv[srcId];
+    }
+    
+    if(j == get_global_size(0)-1) {
+        // last row, set corner
+        srcId = colMajor((cols-1)-1, j-1, get_global_size(0));
+        h[dstId] = h[srcId];
+        hu[dstId] = hu[srcId];
+        hv[dstId] = hv[srcId];
+    }
 }
 
 /// Kernel setting boundary conditions (OUTFLOW or WALL) on the top/bottom boundaries

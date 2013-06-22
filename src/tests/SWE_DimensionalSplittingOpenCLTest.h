@@ -155,9 +155,43 @@ public:
         
         cl::Buffer valuesBuf(block->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(float), values);
         
-        float result = block->reduceMaximum(block->queues[0], valuesBuf, size);
+        cl::Event e;
+        block->reduceMaximum(block->queues[0], valuesBuf, size, NULL, &e);
+        e.wait();
+        
+        float result;
+        block->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, sizeof(cl_float), &result);
         
         TS_ASSERT_EQUALS(result, max);
+    }
+    
+    /// Test splitting of computational domain into buffers for multiple computing devices
+    void testCalculateBufferChunks() {
+        block = new SWE_DimensionalSplittingOpenCL(100, 100, 1.0, 1.0);
+        // clear data (automatically calculated from constructor)
+        block->bufferChunks.clear();
+        
+        // Test single device
+        block->calculateBufferChunks(99, 1);
+        TS_ASSERT_EQUALS(block->bufferChunks.size(), 1);
+        TS_ASSERT_EQUALS(block->bufferChunks[0].first, 0);
+        TS_ASSERT_EQUALS(block->bufferChunks[0].second, 99);
+        
+        delete block;
+        
+        block = new SWE_DimensionalSplittingOpenCL(100, 100, 1.0, 1.0);
+        block->bufferChunks.clear();
+        
+        // Test multiple devices
+        block->calculateBufferChunks(100, 3);
+        TS_ASSERT_EQUALS(block->chunkSize, 34);
+        TS_ASSERT_EQUALS(block->bufferChunks.size(), 3);
+        TS_ASSERT_EQUALS(block->bufferChunks[0].first, 0);
+        TS_ASSERT_EQUALS(block->bufferChunks[0].second, 35);
+        TS_ASSERT_EQUALS(block->bufferChunks[1].first, 34);
+        TS_ASSERT_EQUALS(block->bufferChunks[1].second, 35);
+        TS_ASSERT_EQUALS(block->bufferChunks[2].first, 68);
+        TS_ASSERT_EQUALS(block->bufferChunks[2].second, 32);
     }
     
     /// Simulate the 1D DamBreak in Y direction

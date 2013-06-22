@@ -84,10 +84,14 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
         unsigned int items = (unsigned int)ceil((float)length/(float)(block*stride));
         
         while(items > 1) {
-            k->setArg(0, buffer);
-            k->setArg(1, length);
-            k->setArg(2, block);
-            k->setArg(3, stride);
+            try {
+                k->setArg(0, buffer);
+                k->setArg(1, length);
+                k->setArg(2, block);
+                k->setArg(3, stride);
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to set reduceMaximumCPU kernel arguments");
+            }
             
             items = (unsigned int)ceil((float)length/(float)(block*stride));
             
@@ -97,7 +101,11 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
                 e = &localEvent;
             else
                 e = event;    
-            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);
+            try {
+                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);                
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to enqueue reduceMaximumCPU kernel");
+            }
             if(items > 1) {
                 waitList.clear();
                 waitList.push_back(*e);
@@ -119,10 +127,14 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
         assert(groupCount > 1);
         
         while(groupCount > 1) {
-            k->setArg(0, buffer);
-            k->setArg(1, length);
-            k->setArg(2, stride);
-            k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
+            try {
+                k->setArg(0, buffer);
+                k->setArg(1, length);
+                k->setArg(2, stride);
+                k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to set reduceMaximum kernel arguments");
+            }
             
             groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
             globalSize = workGroup*groupCount;
@@ -132,8 +144,12 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             if(groupCount > 1)
                 e = &localEvent;
             else
-                e = event;  
-            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);
+                e = event;
+            try {
+                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);                
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to enqueue reduceMaximum kernel");
+            }
             if(groupCount > 1) {
                 waitList.clear();
                 waitList.push_back(*e);
@@ -232,37 +248,64 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     // Set boundary conditions at top and bottom boundary
     k = &(kernels["setBottomTopBoundary"]);
     for(unsigned int i = 0; i < useDevices; i++) {
-        k->setArg(0, hd[i]);
-        k->setArg(1, hud[i]);
-        k->setArg(2, hvd[i]);
-        k->setArg(3, h.getRows());
-        k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
-        k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+        try {
+            k->setArg(0, hd[i]);
+            k->setArg(1, hud[i]);
+            k->setArg(2, hvd[i]);
+            k->setArg(3, h.getRows());
+            k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
+            k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to set setBottomTopBoundary kernel arguments");
+        }
         
         size_t length = bufferChunks[i].second;
-        queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length), cl::NullRange, NULL, &event);
+        try {
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length), cl::NullRange, NULL, &event);
+        } catch(cl::Error &e) {
+            handleError(e, "Unable to enqueue setBottomTopBoundary kernel");
+        }
+
         waitList.push_back(event);
     }
     
     // Set boundary conditions at left boundary
     k = &(kernels["setLeftBoundary"]);
-    k->setArg(0, hd[0]);
-    k->setArg(1, hud[0]);
-    k->setArg(2, hvd[0]);
-    k->setArg(3, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
+    try {
+        k->setArg(0, hd[0]);
+        k->setArg(1, hud[0]);
+        k->setArg(2, hvd[0]);
+        k->setArg(3, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set setLeftBoundary kernel arguments");
+    }
     
-    queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
+    try {
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to enqueue setLeftBoundary kernel");
+    }
+    
     waitList.push_back(event);
     
     // Set boundary conditions at right boundary
     k = &(kernels["setRightBoundary"]);
-    k->setArg(0, hd[useDevices-1]);
-    k->setArg(1, hud[useDevices-1]);
-    k->setArg(2, hvd[useDevices-1]);
-    k->setArg(3, bufferChunks[useDevices-1].second);
-    k->setArg(4, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
+    try {
+        k->setArg(0, hd[useDevices-1]);
+        k->setArg(1, hud[useDevices-1]);
+        k->setArg(2, hvd[useDevices-1]);
+        k->setArg(3, bufferChunks[useDevices-1].second);
+        k->setArg(4, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set setRightBoundary kernel arguments");
+    }
     
-    queues[useDevices-1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
+    try {
+        queues[useDevices-1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to enqueue setRightBoundary kernel");
+    }
+    
     waitList.push_back(event);
     
     for(unsigned int i = 0; i < useDevices; i++)

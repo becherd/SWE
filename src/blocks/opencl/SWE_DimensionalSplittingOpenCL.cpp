@@ -365,38 +365,55 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
 {
     // Pointer to kernel object
     cl::Kernel *k;
+    // Number of rows
+    size_t y = h.getRows();
+    // Length variable (number of cols per chunk)
+    size_t length;
     
     // Event waitlist for various kernel enqueues
     std::vector<cl::Event> waitList;
-    cl::Event xSweepNetUpdatesEvent;
     cl::Event ySweepNetUpdatesEvent;
     cl::Event xSweepUpdateUnknownsEvent;
     cl::Event ySweepUpdateUnknownsEvent;
     try {
         // enqueue X-Sweep Kernel
         k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
-        k->setArg(0, hd[0]);
-        k->setArg(1, hud[0]);
-        k->setArg(2, bd[0]);
-        k->setArg(3, hNetUpdatesLeft[0]);
-        k->setArg(4, hNetUpdatesRight[0]);
-        k->setArg(5, huNetUpdatesLeft[0]);
-        k->setArg(6, huNetUpdatesRight[0]);
-        k->setArg(7, waveSpeeds[0]);
-
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-1, h.getRows()), cl::NullRange, NULL, &xSweepNetUpdatesEvent);
         
-        // reduce waveSpeed Maximum
-        cl::Event maximumEvent;
-        reduceMaximum(queues[0], waveSpeeds[0], (h.getCols()-1) * h.getRows(), &xSweepNetUpdatesEvent, &maximumEvent);
-        maximumEvent.wait();
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, hd[i]);
+            k->setArg(1, hud[i]);
+            k->setArg(2, bd[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            k->setArg(7, waveSpeeds[i]);
+            
+            length = bufferChunks[i].second;
+            
+            cl::Event sweepEvent;
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, NULL, &sweepEvent);
+            
+            // reduce waveSpeed Maximum
+            cl::Event maximumEvent;
+            reduceMaximum(queues[i], waveSpeeds[i], (length-1) * y, &sweepEvent, &maximumEvent);
+            waitList.push_back(maximumEvent);
+        }
+        
+        cl::Event::waitForEvents(waitList);
         
         // Read maximum
-        float maxWaveSpeed;
-        queues[0].enqueueReadBuffer(waveSpeeds[0], CL_TRUE, 0, sizeof(cl_float), &maxWaveSpeed);
+        float maxWaveSpeed = -INFINITY;
+        for(unsigned int i = 0; i < useDevices; i++) {
+            float result;
+            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result);
+            maxWaveSpeed = std::max(maxWaveSpeed, result);
+        }
         
         // calculate maximum timestep
         maxTimestep = dx/maxWaveSpeed * 0.4f;
+        
+        // TODO: copy net update edge buffers
         
         // enqueue updateUnknowns Kernel (X-Sweep)
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);

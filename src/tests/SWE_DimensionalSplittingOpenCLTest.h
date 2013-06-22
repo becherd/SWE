@@ -155,7 +155,12 @@ public:
         
         cl::Buffer valuesBuf(block->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(float), values);
         
-        float result = block->reduceMaximum(block->queues[0], valuesBuf, size);
+        cl::Event e;
+        block->reduceMaximum(block->queues[0], valuesBuf, size, NULL, &e);
+        e.wait();
+        
+        float result;
+        block->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, sizeof(cl_float), &result);
         
         TS_ASSERT_EQUALS(result, max);
     }

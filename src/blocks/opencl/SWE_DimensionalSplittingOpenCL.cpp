@@ -65,9 +65,8 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
     std::cout << std::endl;
 }
 
-float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent) {
+void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent, cl::Event *event) {
     cl::Kernel *k;
-    float result;
     
     // List of events a kernel has to wait for
     std::vector<cl::Event> waitList;
@@ -92,10 +91,17 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
             
             items = (unsigned int)ceil((float)length/(float)(block*stride));
             
-            cl::Event event;
-            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, &event);
-            waitList.clear();
-            waitList.push_back(event);
+            cl::Event *e;
+            cl::Event localEvent;
+            if(items > 1)
+                e = &localEvent;
+            else
+                e = event;    
+            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);
+            if(items > 1) {
+                waitList.clear();
+                waitList.push_back(*e);
+            }
             
             stride *= block;
         }
@@ -110,6 +116,8 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
         unsigned int groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
         unsigned int globalSize = workGroup*groupCount;
         
+        assert(groupCount > 1);
+        
         while(groupCount > 1) {
             k->setArg(0, buffer);
             k->setArg(1, length);
@@ -119,20 +127,23 @@ float SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl:
             groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
             globalSize = workGroup*groupCount;
             
-            cl::Event event;
-            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, &event);
-            waitList.clear();
-            waitList.push_back(event);
+            cl::Event *e;
+            cl::Event localEvent;
+            if(groupCount > 1)
+                e = &localEvent;
+            else
+                e = event;  
+            queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);
+            if(groupCount > 1) {
+                waitList.clear();
+                waitList.push_back(*e);
+            }
             
             stride *= workGroup;
         }
     }
     
     queue.flush();
-    
-    // read result
-    queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(float), &result, &waitList);
-    return result;
 }
 
 void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t deviceCount) {
@@ -375,13 +386,18 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
 
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-1, h.getRows()), cl::NullRange, NULL, &xSweepNetUpdatesEvent);
         
-        queues[0].flush();
-        
         // reduce waveSpeed Maximum
-        float maxWaveSpeed = reduceMaximum(queues[0], waveSpeeds[0], (h.getCols()-1) * h.getRows(), &xSweepNetUpdatesEvent);
+        cl::Event maximumEvent;
+        reduceMaximum(queues[0], waveSpeeds[0], (h.getCols()-1) * h.getRows(), &xSweepNetUpdatesEvent, &maximumEvent);
+        maximumEvent.wait();
+        
+        // Read maximum
+        float maxWaveSpeed;
+        queues[0].enqueueReadBuffer(waveSpeeds[0], CL_TRUE, 0, sizeof(cl_float), &maxWaveSpeed);
+        
         // calculate maximum timestep
         maxTimestep = dx/maxWaveSpeed * 0.4f;
-
+        
         // enqueue updateUnknowns Kernel (X-Sweep)
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
         float dt_dx = maxTimestep / dx;

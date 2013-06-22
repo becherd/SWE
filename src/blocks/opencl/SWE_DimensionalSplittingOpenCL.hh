@@ -46,12 +46,16 @@ protected:
     /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
     /**
      * @param queue The command queue to perform the reduction on
-     * @param buffer The buffer the reduce
+     * @param buffer The buffer to reduce
      * @param length The length of the array
      * @param waitEvent OpenCL queue event to wait for before starting
-     * @return The reduced maximum value
+     * @param event The event returned by the last reduce operation (should be waited on to read result)
      */
-    float reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent = NULL);
+    void reduceMaximum(cl::CommandQueue &queue,
+                        cl::Buffer &buffer,
+                        unsigned int length,
+                        cl::Event *waitEvent = NULL,
+                        cl::Event *event = NULL);
    
     /// Create OpenCL device buffers for h, hu, hv, and b variables
     void createBuffers();

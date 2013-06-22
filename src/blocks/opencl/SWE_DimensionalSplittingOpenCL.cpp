@@ -379,7 +379,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
     for(unsigned int i = 0; i < useDevices; i++)
         deviceWaitList.push_back(std::vector<cl::Event>());
     
-    cl::Event ySweepNetUpdatesEvent;
     cl::Event ySweepUpdateUnknownsEvent;
     try {
         // enqueue X-Sweep Kernel
@@ -473,18 +472,25 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
-        k->setArg(0, hd[0]);
-        k->setArg(1, hvd[0]);
-        k->setArg(2, bd[0]);
-        k->setArg(3, hNetUpdatesLeft[0]);
-        k->setArg(4, hNetUpdatesRight[0]);
-        k->setArg(5, huNetUpdatesLeft[0]);
-        k->setArg(6, huNetUpdatesRight[0]);
-        k->setArg(7, waveSpeeds[0]);
-        
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-1), cl::NullRange, &waitList, &ySweepNetUpdatesEvent);
-        waitList.clear();
-        waitList.push_back(ySweepNetUpdatesEvent);
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, hd[i]);
+            k->setArg(1, hvd[i]);
+            k->setArg(2, bd[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            k->setArg(7, waveSpeeds[i]);
+            
+            cl::Event e;
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--;
+            
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-1), cl::NullRange, &deviceWaitList[i], &e);
+            deviceWaitList[i].clear();
+            deviceWaitList[i].push_back(e);
+        }
 
         // enqueue netUpdate Kernel (Y-Sweep)
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);

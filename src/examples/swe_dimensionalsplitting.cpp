@@ -84,7 +84,7 @@ int main( int argc, char** argv ) {
     // -d <file>       // input displacement data file name (REQUIRED for certain scenarios)
     // -c <file>       // checkpoints data file name
     // -f <float>      // output coarseness factor
-    // -m <num>        // maximum number of computing devices
+    // -l <num>        // maximum number of computing devices
     // -n <num>        // Number of checkpoints
     // -t <float>      // Simulation time in seconds
     // -s <scenario>   // Artificial scenario name ("artificialtsunami", "partialdambreak")
@@ -95,7 +95,7 @@ int main( int argc, char** argv ) {
     int c;
     int showUsage = 0;
     std::string optstr;
-    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:m:")) != -1) {
+    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:l:")) != -1) {
         switch(c) {
             case 'x':
                 l_nX = atoi(optarg);
@@ -117,7 +117,7 @@ int main( int argc, char** argv ) {
                 l_checkpointFileName = std::string(optarg);
                 break;
 #endif
-            case 'm':
+            case 'l':
                 l_maxDevices = atoi(optarg);
                 break;
             case 'n':
@@ -244,7 +244,7 @@ int main( int argc, char** argv ) {
         std::cout << "    -n <num>        Number of checkpoints to be written" << std::endl;
         std::cout << "    -t <time>       Total simulation time" << std::endl;
         std::cout << "    -f <num>        Coarseness factor (> 1.0)" << std::endl;
-        std::cout << "    -m <num>        Maximum number of computing devices (OpenCL only)" << std::endl;
+        std::cout << "    -l <num>        Maximum number of computing devices (OpenCL only)" << std::endl;
         std::cout << "    -b <code>       Boundary Conditions" << std::endl;
         std::cout << "                    Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
         std::cout << "                      One char: Option for ALL boundaries" << std::endl;

@@ -229,30 +229,46 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     std::vector<cl::Event> waitList;
     cl::Event event;
     
-    // Set boundary conditions at left and right boundary
-    k = &(kernels["setLeftRightBoundary"]);
+    // Set boundary conditions at top and bottom boundary
+    k = &(kernels["setBottomTopBoundary"]);
+    for(unsigned int i = 0; i < useDevices; i++) {
+        k->setArg(0, hd[i]);
+        k->setArg(1, hud[i]);
+        k->setArg(2, hvd[i]);
+        k->setArg(3, h.getRows());
+        k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
+        k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+        
+        size_t length = bufferChunks[i].second;
+        queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length), cl::NullRange, NULL, &event);
+        waitList.push_back(event);
+    }
+    
+    // Set boundary conditions at left boundary
+    k = &(kernels["setLeftBoundary"]);
     k->setArg(0, hd[0]);
     k->setArg(1, hud[0]);
     k->setArg(2, hvd[0]);
-    k->setArg(3, h.getCols());
-    k->setArg(4, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
-    k->setArg(5, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
+    k->setArg(3, (boundary[BND_LEFT] == OUTFLOW) ? 1.f : -1.f);
     
     queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
     waitList.push_back(event);
     
-    // Set boundary conditions at top and bottom boundary
-    k = &(kernels["setBottomTopBoundary"]);
-    k->setArg(0, hd[0]);
-    k->setArg(1, hud[0]);
-    k->setArg(2, hvd[0]);
-    k->setArg(3, h.getRows());
-    k->setArg(4, (boundary[BND_BOTTOM] == OUTFLOW) ? 1.f : -1.f);
-    k->setArg(5, (boundary[BND_TOP] == OUTFLOW) ? 1.f : -1.f);
+    // Set boundary conditions at right boundary
+    k = &(kernels["setRightBoundary"]);
+    k->setArg(0, hd.back);
+    k->setArg(1, hud.back);
+    k->setArg(2, hvd.back);
+    k->setArg(3, bufferChunks.back.second);
+    k->setArg(4, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
     
-    queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()), cl::NullRange, &waitList);
+    queues.back.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
+    waitList.push_back(event);
     
-    queues[0].finish();
+    for(unsigned int i = 0; i < useDevices; i++)
+        queues[i].flush();
+    
+    cl::Event::waitForEvents(waitList);
 }
 
 void SWE_DimensionalSplittingOpenCL::syncBuffersBeforeRead(std::vector< std::pair< std::vector<cl::Buffer>*, float*> > &buffers) {

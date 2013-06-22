@@ -379,7 +379,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
     for(unsigned int i = 0; i < useDevices; i++)
         deviceWaitList.push_back(std::vector<cl::Event>());
     
-    cl::Event ySweepUpdateUnknownsEvent;
     try {
         // enqueue X-Sweep Kernel
         k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
@@ -470,6 +469,8 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
         }
         
+        waitList.clear();
+        
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
         for(unsigned int i = 0; i < useDevices; i++) {
@@ -495,17 +496,45 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // enqueue netUpdate Kernel (Y-Sweep)
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);
         float dt_dy = maxTimestep / dy;
-        k->setArg(0, dt_dy);
-        k->setArg(1, hd[0]);
-        k->setArg(2, hvd[0]);
-        k->setArg(3, hNetUpdatesLeft[0]);
-        k->setArg(4, hNetUpdatesRight[0]);
-        k->setArg(5, huNetUpdatesLeft[0]);
-        k->setArg(6, huNetUpdatesRight[0]);
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, dt_dy);
+            k->setArg(1, hd[i]);
+            k->setArg(2, hvd[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            
+            
+            cl::Event e;
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--;
+            
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-2), cl::NullRange, &deviceWaitList[i], &e);
+            waitList.push_back(e);
+        }
         
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols(), h.getRows()-2), cl::NullRange, &waitList, &ySweepUpdateUnknownsEvent);
+        // Copy updated edge columns after Y-Sweep so we ensure that the overlapping 
+        // edge columns really have identical values
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            length = bufferChunks[i].second;
+            size_t offset = (length-1)*colSize;
+            cl::Event e;
+            deviceWaitList[i+1].clear();
+            
+            queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            waitList.push_back(e);
+            queues[i+1].enqueueCopyBuffer(hvd[i], hvd[i+1], offset, 0, colSize, &waitList, &e);
+            waitList.push_back(e);
+            // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
+        }
         
-        queues[0].finish();
+        for(unsigned int i = 0; i < useDevices; i++)
+            queues[i].flush();
+        
+        cl::Event::waitForEvents(waitList);
     } catch(cl::Error &e) {
         handleError(e);
     }

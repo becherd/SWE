@@ -455,7 +455,22 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, &deviceWaitList[i], &e);
             waitList.push_back(e);
         }
-
+        
+        // Copy updates edges between buffers from device n to n+1
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            length = bufferChunks[i].second;
+            size_t offset = (length-1)*colSize;
+            cl::Event e;
+            deviceWaitList[i+1].clear();
+            
+            queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            deviceWaitList[i+1].push_back(e);
+            queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
+            deviceWaitList[i+1].push_back(e);
+            // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
+        }
+        
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
         k->setArg(0, hd[0]);

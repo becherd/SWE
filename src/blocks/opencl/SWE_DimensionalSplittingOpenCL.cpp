@@ -380,7 +380,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         deviceWaitList.push_back(std::vector<cl::Event>());
     
     cl::Event ySweepNetUpdatesEvent;
-    cl::Event xSweepUpdateUnknownsEvent;
     cl::Event ySweepUpdateUnknownsEvent;
     try {
         // enqueue X-Sweep Kernel
@@ -408,6 +407,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         }
         
         cl::Event::waitForEvents(waitList);
+        waitList.clear();
         
         // Read maximum
         float maxWaveSpeed = -INFINITY;
@@ -439,16 +439,22 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // enqueue updateUnknowns Kernel (X-Sweep)
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
         float dt_dx = maxTimestep / dx;
-        k->setArg(0, dt_dx);
-        k->setArg(1, hd[0]);
-        k->setArg(2, hud[0]);
-        k->setArg(3, hNetUpdatesLeft[0]);
-        k->setArg(4, hNetUpdatesRight[0]);
-        k->setArg(5, huNetUpdatesLeft[0]);
-        k->setArg(6, huNetUpdatesRight[0]);
-
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-2, h.getRows()), cl::NullRange, &deviceWaitList[0], &xSweepUpdateUnknownsEvent);
-        waitList.push_back(xSweepUpdateUnknownsEvent);
+        for(unsigned int i = 0; i < useDevices; i++) {
+            k->setArg(0, dt_dx);
+            k->setArg(1, hd[i]);
+            k->setArg(2, hud[i]);
+            k->setArg(3, hNetUpdatesLeft[i]);
+            k->setArg(4, hNetUpdatesRight[i]);
+            k->setArg(5, huNetUpdatesLeft[i]);
+            k->setArg(6, huNetUpdatesRight[i]);
+            
+            cl::Event e;
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--; // If this is the last buffer, do not try to update the last column
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, &deviceWaitList[i], &e);
+            waitList.push_back(e);
+        }
 
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);

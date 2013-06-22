@@ -99,10 +99,12 @@ public:
      * @param l_dx The mesh size of the Cartesian grid in x-direction
      * @param l_dy The mesh size of the Cartesian grid in y-direction
      * @param preferredDeviceType The preferred OpenCL device type to use for computation
+     * @param maxDevices Maximum number of computing devices to be used (0 = unlimited)
      */
     SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
         float l_dx, float l_dy,
-        cl_device_type preferredDeviceType = 0);
+        cl_device_type preferredDeviceType = 0,
+        unsigned int maxDevices = 0);
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();

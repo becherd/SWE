@@ -13,7 +13,8 @@
 
 SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
     float l_dx, float l_dy,
-    cl_device_type preferredDeviceType):
+    cl_device_type preferredDeviceType,
+    unsigned int maxDevices):
     SWE_Block(l_nx, l_ny, l_dx, l_dy),
     OpenCLWrapper(preferredDeviceType, getCommandQueueProperties())
 {
@@ -21,9 +22,10 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     getKernelSources(kernelSources);
     buildProgram(kernelSources);
     
-    // TODO: enable multiple devices
-    useDevices = 1;
-    // useDevices = devices.size();
+    if(maxDevices == 0)
+        useDevices = devices.size();
+    else
+        useDevices = std::min((size_t)maxDevices, devices.size());
     
     createBuffers();
 }

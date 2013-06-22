@@ -256,13 +256,13 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     // Set boundary conditions at right boundary
     k = &(kernels["setRightBoundary"]);
-    k->setArg(0, hd.back);
-    k->setArg(1, hud.back);
-    k->setArg(2, hvd.back);
-    k->setArg(3, bufferChunks.back.second);
+    k->setArg(0, hd[useDevices-1]);
+    k->setArg(1, hud[useDevices-1]);
+    k->setArg(2, hvd[useDevices-1]);
+    k->setArg(3, bufferChunks[useDevices-1].second);
     k->setArg(4, (boundary[BND_RIGHT] == OUTFLOW) ? 1.f : -1.f);
     
-    queues.back.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
+    queues[useDevices-1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &event);
     waitList.push_back(event);
     
     for(unsigned int i = 0; i < useDevices; i++)

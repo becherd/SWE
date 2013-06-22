@@ -367,11 +367,18 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
     cl::Kernel *k;
     // Number of rows
     size_t y = h.getRows();
+    // Size of a column (in bytes)
+    size_t colSize = y*sizeof(cl_float);
     // Length variable (number of cols per chunk)
     size_t length;
     
     // Event waitlist for various kernel enqueues
     std::vector<cl::Event> waitList;
+    // Device specific event waitList
+    std::vector< std::vector<cl::Event> > deviceWaitList;
+    for(unsigned int i = 0; i < useDevices; i++)
+        deviceWaitList.push_back(std::vector<cl::Event>());
+    
     cl::Event ySweepNetUpdatesEvent;
     cl::Event xSweepUpdateUnknownsEvent;
     cl::Event ySweepUpdateUnknownsEvent;
@@ -413,7 +420,21 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // calculate maximum timestep
         maxTimestep = dx/maxWaveSpeed * 0.4f;
         
-        // TODO: copy net update edge buffers
+        // Copy net update buffers at edges from device n+1 to device n
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            length = bufferChunks[i].second;
+            size_t offset = (length-1)*colSize;
+            cl::Event e;
+            queues[i].enqueueCopyBuffer(hNetUpdatesLeft[i+1], hNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+            queues[i].enqueueCopyBuffer(hNetUpdatesRight[i+1], hNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+            queues[i].enqueueCopyBuffer(huNetUpdatesLeft[i+1], huNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+            queues[i].enqueueCopyBuffer(huNetUpdatesRight[i+1], huNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
+            deviceWaitList[i].push_back(e);
+        }
         
         // enqueue updateUnknowns Kernel (X-Sweep)
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
@@ -426,7 +447,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k->setArg(5, huNetUpdatesLeft[0]);
         k->setArg(6, huNetUpdatesRight[0]);
 
-        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-2, h.getRows()), cl::NullRange, NULL, &xSweepUpdateUnknownsEvent);
+        queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getCols()-2, h.getRows()), cl::NullRange, &deviceWaitList[0], &xSweepUpdateUnknownsEvent);
         waitList.push_back(xSweepUpdateUnknownsEvent);
 
         // enqueue Y-Sweep Kernel

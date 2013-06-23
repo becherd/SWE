@@ -52,6 +52,9 @@ int main( int argc, char** argv ) {
     //! Maximum number of computing devices to be used (OpenCL specific, 0 = unlimited)
     unsigned int l_maxDevices = 0;
     
+    //! Chosen kernel optimization type
+    KernelType l_kernelType = SWE_DimensionalSplittingOpenCL::GLOBAL;
+    
     //! type of boundary conditions at LEFT, RIGHT, TOP, and BOTTOM boundary
     BoundaryType l_boundaryTypes[4];
     //! whether to override the scenario-defined conditions (true) or not (false)
@@ -85,6 +88,7 @@ int main( int argc, char** argv ) {
     // -c <file>       // checkpoints data file name
     // -f <float>      // output coarseness factor
     // -l <num>        // maximum number of computing devices
+    // -m <code>       // Kernel memory optimization type
     // -n <num>        // Number of checkpoints
     // -t <float>      // Simulation time in seconds
     // -s <scenario>   // Artificial scenario name ("artificialtsunami", "partialdambreak")
@@ -120,6 +124,12 @@ int main( int argc, char** argv ) {
             case 'l':
                 l_maxDevices = atoi(optarg);
                 break;
+            case 'm':
+                optstr = std::string(optarg);
+                if(optstr == "g" || optstr == "global")
+                    l_kernelType = SWE_DimensionalSplittingOpenCL::GLOBAL;
+                if(optstr == "l" || optstr == "local")
+                    l_kernelType = SWE_DimensionalSplittingOpenCL::LOCAL;
             case 'n':
                 l_numberOfCheckPoints = atoi(optarg);
                 break;

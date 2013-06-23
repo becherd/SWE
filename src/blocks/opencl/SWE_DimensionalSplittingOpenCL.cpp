@@ -14,13 +14,21 @@
 SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
     float l_dx, float l_dy,
     cl_device_type preferredDeviceType,
-    unsigned int maxDevices):
+    unsigned int maxDevices,
+    KernelType _kernelType):
     SWE_Block(l_nx, l_ny, l_dx, l_dy),
-    OpenCLWrapper(preferredDeviceType, getCommandQueueProperties())
+    OpenCLWrapper(preferredDeviceType, getCommandQueueProperties()),
+    kernelType(_kernelType)
 {
     cl::Program::Sources kernelSources;
     getKernelSources(kernelSources);
-    buildProgram(kernelSources);
+    
+    std::string options;
+    if(kernelType == GLOBAL)
+        options = std::string("-D MEM_GLOBAL");
+    if(kernelType == LOCAL)
+        options = std::string("-D MEM_LOCAL");
+    buildProgram(kernelSources, options);
     
     if(maxDevices == 0)
         useDevices = devices.size();

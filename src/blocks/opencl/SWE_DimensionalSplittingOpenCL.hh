@@ -5,6 +5,9 @@
 #include "blocks/SWE_Block.hh"
 #include "tools/help.hh"
 
+//! Type to set options for kernel optimization types (e.g. memory)
+typedef int KernelType;
+
 /**
  * OpenCL Dimensional Splitting Block
  *
@@ -42,6 +45,9 @@ protected:
     
     //! Number of devices that should be used
     unsigned int useDevices;
+    
+    //! The kernel memory type to be used
+    KernelType kernelType;
     
     /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
     /**
@@ -92,6 +98,11 @@ protected:
     }
     
 public:
+    //! Option denoting global device memory
+    const static KernelType GLOBAL = 1;
+    //! Option denoting local device memory
+    const static KernelType LOCAL = 2;
+    
     /// Dimensional Splitting Constructor (OpenCL)
     /**
      * @param l_nx The grid size in x-direction (excluding ghost cells)
@@ -104,7 +115,8 @@ public:
     SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
         float l_dx, float l_dy,
         cl_device_type preferredDeviceType = 0,
-        unsigned int maxDevices = 0);
+        unsigned int maxDevices = 0,
+        KernelType kernelType = GLOBAL);
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();

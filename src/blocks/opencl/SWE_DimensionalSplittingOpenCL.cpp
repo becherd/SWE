@@ -463,7 +463,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             cl::NDRange globalRange, localRange;
             if(kernelType == LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
-                std::cout << "X size " << groupSize << " kernelrange " << getKernelRange(groupSize, length-1) << " y "<< y << std::endl;
                 globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
                 localRange = cl::NDRange(groupSize, 1);
             } else {
@@ -487,8 +486,8 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
                 k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
-                k->setArg(16, length-1);
-                k->setArg(17, y);
+                k->setArg(16, (unsigned int)length-1);
+                k->setArg(17, (unsigned int)y);
             }
             
             cl::Event sweepEvent;
@@ -603,8 +602,8 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
                 k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
-                k->setArg(16, length-1);
-                k->setArg(17, y-1);
+                k->setArg(16, (unsigned int)length-1);
+                k->setArg(17, (unsigned int)y-1);
             }
             
             cl::Event e;

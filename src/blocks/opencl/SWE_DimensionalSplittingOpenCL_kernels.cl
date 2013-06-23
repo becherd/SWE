@@ -24,14 +24,24 @@ inline size_t rowMajor(size_t x, size_t y, size_t cols)
 /**
  * Kernel Range should be set to (#cols-1, #rows)
  * 
- * @param h                     Pointer to water heights
- * @param hu                    Pointer to horizontal water momentums
- * @param b                     Pointer to bathymetry
- * @param hNetUpdatesLeft       Pointer to left going water updates
- * @param hNetUpdatesRight      Pointer to right going water updates
- * @param huNetUpdatesLeft      Pointer to left going momentum updates
- * @param huNetUpdatesRight     Pointer to right going momentum updates
- * @param maxWaveSpeed          Pointer to global maximum wavespeed
+ * @param h                             Pointer to global water heights memory
+ * @param hu                            Pointer to global horizontal water momentums memory
+ * @param b                             Pointer to global bathymetry memory
+ * @param hNetUpdatesLeft               Pointer to global left going water updates memory
+ * @param hNetUpdatesRight              Pointer to global right going water updates memory
+ * @param huNetUpdatesLeft              Pointer to global left going momentum updates memory
+ * @param huNetUpdatesRight             Pointer to global right going momentum updates memory
+ * @param maxWaveSpeed                  Pointer to global maximum wavespeed memory
+ * @param hScratch                      Pointer to local water heights scratch memory (LOCAL ONLY)
+ * @param huScratch                     Pointer to local horizontal water momentums scratch memory (LOCAL ONLY)
+ * @param bScratch                      Pointer to local bathymetry scratch memory (LOCAL ONLY)
+ * @param hNetUpdatesLeftScratch        Pointer to local left going water updates scratch memory (LOCAL ONLY)
+ * @param hNetUpdatesRightScratch       Pointer to local right going water updates scratch memory (LOCAL ONLY)
+ * @param huNetUpdatesLeftScratch       Pointer to local left going momentum updates scratch memory (LOCAL ONLY)
+ * @param huNetUpdatesRightScratch      Pointer to local right going momentum updates scratch memory (LOCAL ONLY)
+ * @param maxWaveSpeedScratch           Pointer to local maximum wavespeed scratch memory (LOCAL ONLY)
+ * @param edges                         Number of edges (LOCAL ONLY)
+ * @param rows                          Number of rows (LOCAL ONLY)
  */
 __kernel void dimensionalSplitting_XSweep_netUpdates(
     __global float* h,
@@ -41,8 +51,24 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     __global float* hNetUpdatesRight,
     __global float* huNetUpdatesLeft,
     __global float* huNetUpdatesRight,
-    __global float* maxWaveSpeed)
-{
+    __global float* maxWaveSpeed
+#ifdef MEM_LOCAL
+    ,
+    __local float* hScratch,
+    __local float* huScratch,
+    __local float* bScratch,
+    __local float* hNetUpdatesLeftScratch,
+    __local float* hNetUpdatesRightScratch,
+    __local float* huNetUpdatesLeftScratch,
+    __local float* huNetUpdatesRightScratch,
+    __local float* maxWaveSpeedScratch,
+    __const uint edges, // cols-1
+    __const uint rows
+#endif
+)
+{    
+#ifndef MEM_LOCAL
+    // GLOBAL
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
@@ -58,20 +84,78 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
         &(huNetUpdatesLeft[leftId]), &(huNetUpdatesRight[leftId]),
         &(maxWaveSpeed[leftId])
     );
+#else
+    // LOCAL
+    uint localsize = get_local_size(0);
+    uint gid = get_group_id(0);
+    uint offset = gid * localsize * rows + get_group_id(1);
+    // Number of floats to load (make sure we stay in bounds)
+    uint num = min(localsize, edges-(gid * localsize)) + 1;
+    
+    event_t event[4];
+    // local dst, global src, num floats, stride
+    event[0] = async_work_group_strided_copy(hScratch, h+offset, num, rows, 0);
+    event[1] = async_work_group_strided_copy(huScratch, hu+offset, num, rows, 0);
+    event[2] = async_work_group_strided_copy(bScratch, b+offset, num, rows, 0);
+    // wait for memory
+    wait_group_events(3, event);
+    
+    uint id = get_local_id(0);
+    
+    if(get_global_id(0) < edges) {
+        computeNetUpdates(
+            hScratch[id], hScratch[id+1],
+            huScratch[id], huScratch[id+1],
+            bScratch[id], bScratch[id+1],
+            &(hNetUpdatesLeftScratch[id]), &(hNetUpdatesRightScratch[id]),
+            &(huNetUpdatesLeftScratch[id]), &(huNetUpdatesRightScratch[id]),
+            &(maxWaveSpeedScratch[id])
+        );
+    }
+    
+    // Make sure all calculations have finished
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    // write local memory back to global memory
+    num--; // we're writing one update less than number of cells
+    event[0] = async_work_group_strided_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, rows, 0);
+    event[1] = async_work_group_strided_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, rows, 0);
+    event[2] = async_work_group_strided_copy(huNetUpdatesLeft+offset, huNetUpdatesLeftScratch, num, rows, 0);
+    event[3] = async_work_group_strided_copy(huNetUpdatesRight+offset, huNetUpdatesRightScratch, num, rows, 0);
+    
+    // Reduce maximum
+    // TODO: reduce maximum in local memory
+    // maxWaveSpeed[gid] = maxWave;
+    event_t waveEvent = async_work_group_strided_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, rows, 0);
+    
+    // Wait for async transfers
+    wait_group_events(4, event);
+    wait_group_events(1, &waveEvent); // TODO: remove this
+#endif
 }
 
 /// Compute net updates (Y-Sweep)
 /**
  * Kernel Range should be set to (#cols, #rows-1)
  * 
- * @param h                     Pointer to water heights
- * @param hv                    Pointer to vertical water momentums
- * @param b                     Pointer to bathymetry
- * @param hNetUpdatesLeft       Pointer to left going water updates
- * @param hNetUpdatesRight      Pointer to right going water updates
- * @param huNetUpdatesLeft      Pointer to left going momentum updates
- * @param huNetUpdatesRight     Pointer to right going momentum updates
- * @param maxWaveSpeed          Pointer to global maximum wavespeed
+ * @param h                             Pointer to water heights
+ * @param hv                            Pointer to vertical water momentums
+ * @param b                             Pointer to bathymetry
+ * @param hNetUpdatesLeft               Pointer to left going water updates
+ * @param hNetUpdatesRight              Pointer to right going water updates
+ * @param huNetUpdatesLeft              Pointer to left going momentum updates
+ * @param huNetUpdatesRight             Pointer to right going momentum updates
+ * @param maxWaveSpeed                  Pointer to global maximum wavespeed
+ * @param hScratch                      Pointer to local water heights scratch memory (LOCAL ONLY)
+ * @param hvScratch                     Pointer to local horizontal water momentums scratch memory (LOCAL ONLY)
+ * @param bScratch                      Pointer to local bathymetry scratch memory (LOCAL ONLY)
+ * @param hNetUpdatesLeftScratch        Pointer to local left going water updates scratch memory (LOCAL ONLY)
+ * @param hNetUpdatesRightScratch       Pointer to local right going water updates scratch memory (LOCAL ONLY)
+ * @param hvNetUpdatesLeftScratch       Pointer to local left going momentum updates scratch memory (LOCAL ONLY)
+ * @param hvNetUpdatesRightScratch      Pointer to local right going momentum updates scratch memory (LOCAL ONLY)
+ * @param maxWaveSpeedScratch           Pointer to local maximum wavespeed scratch memory (LOCAL ONLY)
+ * @param cols                          Number of columns (LOCAL ONLY)
+ * @param edges                         Number of edges (LOCAL ONLY)
  */
 __kernel void dimensionalSplitting_YSweep_netUpdates(
     __global float* h,
@@ -81,8 +165,24 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     __global float* hNetUpdatesRight,
     __global float* hvNetUpdatesLeft,
     __global float* hvNetUpdatesRight,
-    __global float* maxWaveSpeed)
+    __global float* maxWaveSpeed
+#ifdef MEM_LOCAL
+    ,
+    __local float* hScratch,
+    __local float* hvScratch,
+    __local float* bScratch,
+    __local float* hNetUpdatesLeftScratch,
+    __local float* hNetUpdatesRightScratch,
+    __local float* hvNetUpdatesLeftScratch,
+    __local float* hvNetUpdatesRightScratch,
+    __local float* maxWaveSpeedScratch,
+    __const uint cols,
+    __const uint edges // rows-1
+#endif
+)
 {
+#ifndef MEM_LOCAL
+    // GLOBAL
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
@@ -91,7 +191,7 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     size_t rightId = colMajor(x, y+1, rows+1);
     size_t updateId = colMajor(x, y, rows);
     
-    computeNetUpdates(
+    computeNetUpdatesGlobal(
         h[leftId], h[rightId],
         hv[leftId], hv[rightId],
         b[leftId], b[rightId],
@@ -99,6 +199,55 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
         &(hvNetUpdatesLeft[updateId]), &(hvNetUpdatesRight[updateId]),
         &(maxWaveSpeed[updateId])
     );
+#else
+    // LOCAL
+    uint localsize = get_local_size(1);
+    uint gid = get_group_id(1);
+    uint offset = get_group_id(0)*(edges+1) + gid * localsize;
+    // Number of floats to load (make sure we stay in bounds)
+    uint num = min(localsize, edges-(gid * localsize)) + 1;
+
+    event_t event[4];
+    // local dst, global src, num floats
+    event[0] = async_work_group_copy(hScratch, h+offset, num, 0);
+    event[1] = async_work_group_copy(hvScratch, hv+offset, num, 0);
+    event[2] = async_work_group_copy(bScratch, b+offset, num, 0);
+    // wait for memory
+    wait_group_events(3, event);
+
+    uint id = get_local_id(1);
+
+    if(get_global_id(1) < edges) {
+        computeNetUpdates(
+            hScratch[id], hScratch[id+1],
+            hvScratch[id], hvScratch[id+1],
+            bScratch[id], bScratch[id+1],
+            &(hNetUpdatesLeftScratch[id]), &(hNetUpdatesRightScratch[id]),
+            &(hvNetUpdatesLeftScratch[id]), &(hvNetUpdatesRightScratch[id]),
+            &(maxWaveSpeedScratch[id])
+        );
+    }
+
+    // Make sure all calculations have finished
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // write local memory back to global memory
+    num--; // we're writing one update less than number of cells
+    offset = get_group_id(0)*edges + gid * localsize;
+    event[0] = async_work_group_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, 0);
+    event[1] = async_work_group_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, 0);
+    event[2] = async_work_group_copy(hvNetUpdatesLeft+offset, hvNetUpdatesLeftScratch, num, 0);
+    event[3] = async_work_group_copy(hvNetUpdatesRight+offset, hvNetUpdatesRightScratch, num, 0);
+
+    // Reduce maximum
+    // TODO: reduce maximum in local memory
+    // maxWaveSpeed[gid] = maxWave;
+    event_t waveEvent = async_work_group_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, 0);
+
+    // Wait for async transfers
+    wait_group_events(4, event);
+    wait_group_events(1, &waveEvent); // TODO: remove this
+#endif
 }
 
 /// Update Unknowns (X-Sweep)

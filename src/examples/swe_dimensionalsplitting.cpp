@@ -99,7 +99,7 @@ int main( int argc, char** argv ) {
     int c;
     int showUsage = 0;
     std::string optstr;
-    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:l:")) != -1) {
+    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:l:m:")) != -1) {
         switch(c) {
             case 'x':
                 l_nX = atoi(optarg);
@@ -128,7 +128,7 @@ int main( int argc, char** argv ) {
                 optstr = std::string(optarg);
                 if(optstr == "g" || optstr == "global")
                     l_kernelType = SWE_DimensionalSplittingOpenCL::GLOBAL;
-                if(optstr == "l" || optstr == "local")
+                else
                     l_kernelType = SWE_DimensionalSplittingOpenCL::LOCAL;
             case 'n':
                 l_numberOfCheckPoints = atoi(optarg);
@@ -356,7 +356,7 @@ int main( int argc, char** argv ) {
 #ifndef USEOPENCL
     SWE_DimensionalSplitting l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
 #else
-    SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY, 0, l_maxDevices);
+    SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY, 0, l_maxDevices, l_kernelType);
     l_dimensionalSplitting.printDeviceInformation();
 #endif
     

@@ -70,7 +70,10 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
         }
     }
     
-    std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices." << std::endl;
+    std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices with ";
+    if(kernelType == GLOBAL) std::cout << "global";
+    else std::cout << "local";
+    std::cout << " memory." << std::endl;
     
     std::cout << std::endl;
 }
@@ -453,6 +456,20 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
         
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            
+            size_t groupSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                std::cout << "X size " << groupSize << " kernelrange " << getKernelRange(groupSize, length-1) << " y "<< y << std::endl;
+                globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
+                localRange = cl::NDRange(groupSize, 1);
+            } else {
+                globalRange = cl::NDRange(length-1, y);
+                localRange = cl::NullRange;
+            }
             k->setArg(0, hd[i]);
             k->setArg(1, hud[i]);
             k->setArg(2, bd[i]);
@@ -461,11 +478,21 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
             k->setArg(7, waveSpeeds[i]);
-            
-            length = bufferChunks[i].second;
+            if(kernelType == LOCAL) {
+                k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(16, length-1);
+                k->setArg(17, y);
+            }
             
             cl::Event sweepEvent;
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, NULL, &sweepEvent);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, NULL, &sweepEvent);
             
             // reduce waveSpeed Maximum
             cl::Event maximumEvent;
@@ -543,6 +570,24 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--;
+            
+            size_t groupSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalRange = cl::NDRange(length, getKernelRange(groupSize, y-1));
+                localRange = cl::NDRange(1, groupSize);
+                std::cout << "Y size " << groupSize << " kernelrange " << getKernelRange(groupSize, y-1) << " x "<< length << std::endl;
+                
+            } else {
+                globalRange = cl::NDRange(length, y-1);
+                localRange = cl::NullRange;
+            }
+            
             k->setArg(0, hd[i]);
             k->setArg(1, hvd[i]);
             k->setArg(2, bd[i]);
@@ -551,13 +596,21 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
             k->setArg(7, waveSpeeds[i]);
+            if(kernelType == LOCAL) {
+                k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(16, length-1);
+                k->setArg(17, y-1);
+            }
             
             cl::Event e;
-            length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--;
-            
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-1), cl::NullRange, &deviceWaitList[i], &e);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
             deviceWaitList[i].clear();
             deviceWaitList[i].push_back(e);
         }

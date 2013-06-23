@@ -168,10 +168,10 @@ public:
         setupContext(preferredDeviceType, queueProperties);
     }
     
-    void buildProgram(cl::Program::Sources &kernelSources) {
+    void buildProgram(cl::Program::Sources &kernelSources, const std::string &options = std::string()) {
         try {        
             program = cl::Program(context, kernelSources);
-            program.build(devices);
+            program.build(devices, options.c_str());
         
             std::vector<cl::Kernel> _kernels;
             program.createKernels(&_kernels);

@@ -6,6 +6,7 @@
 #include <cassert>
 #include <iostream>
 #include <map>
+#include <cmath>
 
 /// OpenCL Wrapper
 /**
@@ -151,6 +152,26 @@ protected:
             handleError(e);
         }
     }
+    
+   /// Calculate optimal work group size for kernel and device
+   /**
+    * @param kernel The kernel object to execute
+    * @param device The device to execute the kernel on
+    * @return The work group size
+    */
+   inline size_t getKernelGroupSize( const cl::Kernel &kernel, const cl::Device &device ) {
+       return kernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+   }
+   
+   /// Calculate kernel range so that the group size divides kernel range
+   /**
+    * @param groupSize The group size to use
+    * @param range The minimum range to execute on
+    * @return The kernel range to use
+    */
+   inline size_t getKernelRange(size_t groupSize, size_t range) {
+       return groupSize * (size_t)ceil(float(range) / groupSize);
+   }
     
 public:
     /// Constructor

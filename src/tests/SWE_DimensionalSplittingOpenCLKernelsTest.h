@@ -13,6 +13,13 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
     private:
         //! OpenCL Wrapper instance to test on
         OpenCLWrapper *wrapper;
+        //! OpenCL Wrapper with "local memory option"
+        OpenCLWrapper *wrapperLocal;
+        
+        //! Kernel direction (X)
+        const static unsigned int DIR_X = 1;
+        //! Kernel direction (Y)
+        const static unsigned int DIR_Y = 2;
         
         void _runComputeNetUpdates(
             const char* text,
@@ -64,6 +71,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         void _runSweep(const char* kernelName,
             int sourceCount, int updateCount,
             int kernelRangeX, int kernelRangeY,
+            unsigned int kernelDirection,
             float* h,
             float* hu,
             float* b,
@@ -71,6 +79,9 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             float* expectedHuNetUpdateLeft, float* expectedHuNetUpdateRight,
             float* expectedMaxWaveSpeed)
         {
+            // 
+            // GLOBAL MEMORY
+            // 
             // h, hu and b input buffers
             cl::Buffer hBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), h);
             cl::Buffer huBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), hu);
@@ -109,11 +120,74 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             float delta = 1e-3;
             
             for(int i = 0; i < updateCount; i++) {
-                TSM_ASSERT_DELTA("h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
-                TSM_ASSERT_DELTA("h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
-                TSM_ASSERT_DELTA("hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
-                TSM_ASSERT_DELTA("hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
-                TSM_ASSERT_DELTA("max wave speed", maxWaveSpeed[i], expectedMaxWaveSpeed[i], delta);
+                TSM_ASSERT_DELTA("[global] h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
+                TSM_ASSERT_DELTA("[global] h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
+                TSM_ASSERT_DELTA("[global] hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
+                TSM_ASSERT_DELTA("[global] hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+                TSM_ASSERT_DELTA("[global] max wave speed", maxWaveSpeed[i], expectedMaxWaveSpeed[i], delta);
+            }
+            
+            // 
+            // LOCAL MEMORY
+            // 
+            // h, hu and b input buffers
+            cl::Buffer hBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), h);
+            cl::Buffer huBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), hu);
+            cl::Buffer bBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), b);
+            
+            // net update and maxwave buffers
+            cl::Buffer hLeftBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer hRightBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer huLeftBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer huRightBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer maxWaveBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            
+            k = &(wrapperLocal->kernels[kernelName]);
+            size_t groupSize = wrapperLocal->getKernelGroupSize(*k, wrapperLocal->devices[0]);
+            k->setArg(0, hBufLocal);
+            k->setArg(1, huBufLocal);
+            k->setArg(2, bBufLocal);
+            k->setArg(3, hLeftBufLocal);
+            k->setArg(4, hRightBufLocal);
+            k->setArg(5, huLeftBufLocal);
+            k->setArg(6, huRightBufLocal);
+            k->setArg(7, maxWaveBufLocal);
+            k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
+            k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
+            k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
+            k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(16, kernelRangeX);
+            k->setArg(17, kernelRangeY);
+            
+            cl::NDRange globalRange;
+            cl::NDRange localRange;
+            
+            if(kernelDirection == DIR_X) {
+                globalRange = cl::NDRange(wrapperLocal->getKernelRange(groupSize, kernelRangeX), kernelRangeY);
+                localRange = cl::NDRange(groupSize, 1);
+            } else {
+                globalRange = cl::NDRange(kernelRangeX, wrapperLocal->getKernelRange(groupSize, kernelRangeY));
+                localRange = cl::NDRange(1, groupSize);
+            }
+            
+            wrapperLocal->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange);
+            
+            wrapperLocal->queues[0].enqueueReadBuffer(hLeftBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateLeft);
+            wrapperLocal->queues[0].enqueueReadBuffer(hRightBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateRight);
+            wrapperLocal->queues[0].enqueueReadBuffer(huLeftBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateLeft);
+            wrapperLocal->queues[0].enqueueReadBuffer(huRightBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateRight);
+            wrapperLocal->queues[0].enqueueReadBuffer(maxWaveBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &maxWaveSpeed);
+            
+            for(int i = 0; i < updateCount; i++) {
+                TSM_ASSERT_DELTA("[local] h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
+                TSM_ASSERT_DELTA("[local] h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
+                TSM_ASSERT_DELTA("[local] hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
+                TSM_ASSERT_DELTA("[local] hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+                TSM_ASSERT_DELTA("[local] max wave speed", maxWaveSpeed[i], expectedMaxWaveSpeed[i], delta);
             }
         }
         
@@ -166,15 +240,20 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         
     public:
         void setUp() {
-            wrapper = new OpenCLWrapper();
+            
             
             cl::Program::Sources kernelSources;
             getKernelSources(kernelSources);
+            wrapper = new OpenCLWrapper();
             wrapper->buildProgram(kernelSources);
+            
+            wrapperLocal = new OpenCLWrapper();
+            wrapperLocal->buildProgram(kernelSources, "-D MEM_LOCAL");
         }
         
         void tearDown() {
             delete wrapper;
+            delete wrapperLocal;
         }
         
         /// Test kernel function calculating the X-Sweep net updates
@@ -234,7 +313,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
     
             _runSweep(  "dimensionalSplitting_XSweep_netUpdates",
-                        srcCount, updCount, x-1, y,
+                        srcCount, updCount, x-1, y, DIR_X,
                         h, hu, b,
                         expectedHNetUpdateLeft, expectedHNetUpdateRight,
                         expectedHuNetUpdateLeft, expectedHuNetUpdateRight,
@@ -298,7 +377,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
     
             _runSweep(  "dimensionalSplitting_YSweep_netUpdates",
-                        srcCount, updCount, x, y-1,
+                        srcCount, updCount, x, y-1, DIR_Y,
                         h, hu, b,
                         expectedHNetUpdateLeft, expectedHNetUpdateRight,
                         expectedHuNetUpdateLeft, expectedHuNetUpdateRight,

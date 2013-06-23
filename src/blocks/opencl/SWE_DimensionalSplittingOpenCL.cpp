@@ -580,9 +580,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             if(kernelType == LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
                 globalRange = cl::NDRange(length, getKernelRange(groupSize, y-1));
-                localRange = cl::NDRange(1, groupSize);
-                std::cout << "Y size " << groupSize << " kernelrange " << getKernelRange(groupSize, y-1) << " x "<< length << std::endl;
-                
+                localRange = cl::NDRange(1, groupSize);                
             } else {
                 globalRange = cl::NDRange(length, y-1);
                 localRange = cl::NullRange;

@@ -191,7 +191,7 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     size_t rightId = colMajor(x, y+1, rows+1);
     size_t updateId = colMajor(x, y, rows);
     
-    computeNetUpdatesGlobal(
+    computeNetUpdates(
         h[leftId], h[rightId],
         hv[leftId], hv[rightId],
         b[leftId], b[rightId],

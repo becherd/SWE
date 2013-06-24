@@ -533,6 +533,23 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
         float dt_dx = maxTimestep / dx;
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            
+            if(i == useDevices-1)
+                length--; // If this is the last buffer, do not try to update the last column
+            
+            size_t groupSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
+                localRange = cl::NDRange(groupSize, 1);
+            } else {
+                globalRange = cl::NDRange(length-1, y);
+                localRange = cl::NullRange;
+            }
+            
             k->setArg(0, dt_dx);
             k->setArg(1, hd[i]);
             k->setArg(2, hud[i]);
@@ -540,12 +557,19 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(4, hNetUpdatesRight[i]);
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
+            if(kernelType == LOCAL) {
+                k->setArg(7, cl::__local((groupSize)*sizeof(cl_float)));
+                k->setArg(8, cl::__local((groupSize)*sizeof(cl_float)));
+                k->setArg(9, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(10, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, (unsigned int)length-1);
+                k->setArg(14, (unsigned int)y);
+            }
             
             cl::Event e;
-            length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--; // If this is the last buffer, do not try to update the last column
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, &deviceWaitList[i], &e);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
             waitList.push_back(e);
         }
         

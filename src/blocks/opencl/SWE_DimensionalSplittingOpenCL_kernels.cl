@@ -250,6 +250,8 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
 #endif
 }
 
+
+
 /// Update Unknowns (X-Sweep)
 /**
  * Kernel Range should be set to (#cols-2, #rows)
@@ -269,8 +271,22 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     __global float* hNetUpdatesLeft,
     __global float* hNetUpdatesRight,
     __global float* huNetUpdatesLeft,
-    __global float* huNetUpdatesRight)
+    __global float* huNetUpdatesRight
+#ifdef MEM_LOCAL
+    ,
+    __local float* hScratch,
+    __local float* huScratch,
+    __local float* hNetUpdatesLeftScratch,
+    __local float* hNetUpdatesRightScratch,
+    __local float* huNetUpdatesLeftScratch,
+    __local float* huNetUpdatesRightScratch,
+    __const uint edges, // cols-1
+    __const uint rows
+#endif
+        )
 {
+#ifndef MEM_LOCAL
+    // GLOBAL
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
@@ -285,6 +301,42 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     
     // Catch negative heights
     h[rightId] = fmax(h[rightId], 0.f);
+#else
+    // LOCAL
+    uint id = get_local_id(0);
+    uint gid = get_group_id(0);
+    uint localsize = get_local_size(0);
+    uint leftOffset = gid*localsize*rows + get_group_id(1);
+    uint rightOffset = leftOffset+rows;
+    
+    uint num = min(localsize, edges-(gid*localsize));
+    
+    event_t event[6];
+    event[0] = async_work_group_strided_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, rows, 0);
+    event[1] = async_work_group_strided_copy(hNetUpdatesRightScratch, hNetUpdatesRight+leftOffset, num, rows, 0);
+    event[2] = async_work_group_strided_copy(huNetUpdatesLeftScratch, huNetUpdatesLeft+rightOffset, num, rows, 0);
+    event[3] = async_work_group_strided_copy(huNetUpdatesRightScratch, huNetUpdatesRight+leftOffset, num, rows, 0);
+    event[4] = async_work_group_strided_copy(hScratch, h+rightOffset, num, rows, 0);
+    event[5] = async_work_group_strided_copy(huScratch, hu+rightOffset, num, rows, 0);
+    wait_group_events(6, event);
+    
+    // make sure we stay inside bounds
+    if(id < num) {
+        // update heights
+        hScratch[id] -= dt_dx * (hNetUpdatesRightScratch[id] + hNetUpdatesLeftScratch[id]);
+        // Update momentum in x-direction
+        huScratch[id] -= dt_dx * (huNetUpdatesRightScratch[id] + huNetUpdatesLeftScratch[id]);
+        
+        // Catch negative heights
+        hScratch[id] = fmax(hScratch[id], 0.f);
+    }
+    
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    event[0] = async_work_group_strided_copy(hScratch, h+rightOffset, num, rows, 0);
+    event[1] = async_work_group_strided_copy(huScratch, hu+rightOffset, num, rows, 0);
+    wait_group_events(2, event);
+#endif
 }
 
 /// Update Unknowns (Y-Sweep)

@@ -24,10 +24,12 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     getKernelSources(kernelSources);
     
     std::string options;
-    if(kernelType == GLOBAL)
+    if(kernelType == MEM_GLOBAL) {
         options = std::string("-D MEM_GLOBAL");
-    if(kernelType == LOCAL)
+    } else if(kernelType == MEM_LOCAL) {
         options = std::string("-D MEM_LOCAL");
+    }
+    
     buildProgram(kernelSources, options);
     
     if(maxDevices == 0)
@@ -71,7 +73,7 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
     }
     
     std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices with ";
-    if(kernelType == GLOBAL) std::cout << "global";
+    if(kernelType == MEM_GLOBAL) std::cout << "global";
     else std::cout << "local";
     std::cout << " memory." << std::endl;
     
@@ -461,7 +463,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             size_t groupSize;
             cl::NDRange globalRange, localRange;
-            if(kernelType == LOCAL) {
+            if(kernelType == MEM_LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
                 globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
                 localRange = cl::NDRange(groupSize, 1);
@@ -477,7 +479,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
             k->setArg(7, waveSpeeds[i]);
-            if(kernelType == LOCAL) {
+            if(kernelType == MEM_LOCAL) {
                 k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
                 k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
                 k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
@@ -541,7 +543,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             size_t groupSize;
             cl::NDRange globalRange, localRange;
-            if(kernelType == LOCAL) {
+            if(kernelType == MEM_LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
                 globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
                 localRange = cl::NDRange(groupSize, 1);
@@ -557,9 +559,9 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(4, hNetUpdatesRight[i]);
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
-            if(kernelType == LOCAL) {
-                k->setArg(7, cl::__local((groupSize)*sizeof(cl_float)));
-                k->setArg(8, cl::__local((groupSize)*sizeof(cl_float)));
+            if(kernelType == MEM_LOCAL) {
+                k->setArg(7, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(8, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(9, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(10, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
@@ -600,7 +602,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             size_t groupSize;
             cl::NDRange globalRange, localRange;
-            if(kernelType == LOCAL) {
+            if(kernelType == MEM_LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
                 globalRange = cl::NDRange(length, getKernelRange(groupSize, y-1));
                 localRange = cl::NDRange(1, groupSize);                
@@ -617,7 +619,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
             k->setArg(7, waveSpeeds[i]);
-            if(kernelType == LOCAL) {
+            if(kernelType == MEM_LOCAL) {
                 k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
                 k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
                 k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
@@ -626,7 +628,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
                 k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
                 k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
-                k->setArg(16, (unsigned int)length-1);
+                k->setArg(16, (unsigned int)length);
                 k->setArg(17, (unsigned int)y-1);
             }
             
@@ -640,6 +642,22 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);
         float dt_dy = maxTimestep / dy;
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            if(i == useDevices-1)
+                length--;
+            
+            size_t groupSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == MEM_LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalRange = cl::NDRange(length, getKernelRange(groupSize, y-2));
+                localRange = cl::NDRange(1, groupSize);
+            } else {
+                globalRange = cl::NDRange(length, y-2);
+                localRange = cl::NullRange;
+            }
+            
             k->setArg(0, dt_dy);
             k->setArg(1, hd[i]);
             k->setArg(2, hvd[i]);
@@ -647,14 +665,19 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(4, hNetUpdatesRight[i]);
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
-            
+            if(kernelType == MEM_LOCAL) {
+                k->setArg(7, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(8, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(9, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(10, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, (unsigned int)length);
+                k->setArg(14, (unsigned int)y-1);
+            }
             
             cl::Event e;
-            length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--;
-            
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-2), cl::NullRange, &deviceWaitList[i], &e);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
             waitList.push_back(e);
         }
         

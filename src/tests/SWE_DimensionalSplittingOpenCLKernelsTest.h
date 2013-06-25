@@ -194,12 +194,14 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         void _runUpdate(const char* kernelName,
             int sourceCount, int updateCount,
             int kernelRangeX, int kernelRangeY,
+            unsigned int kernelDirection,
             float ds_dt,
             float* h, float* hu,
             float* hNetUpdateLeft, float* hNetUpdateRight,
             float* huNetUpdateLeft, float* huNetUpdateRight,
             float* expectedH, float* expectedHu)
         {
+            // GLOBAL
             // h, hu and b input buffers
             cl::Buffer hBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), h);
             cl::Buffer huBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), hu);
@@ -232,9 +234,70 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             for(int i = 0; i < sourceCount; i++) {
                 
                 if(expectedH[i] != -INFINITY)
-                    TSM_ASSERT_DELTA("h", hResult[i], expectedH[i], delta);
+                    TSM_ASSERT_DELTA("[global] h", hResult[i], expectedH[i], delta);
                 if(expectedHu[i] != -INFINITY)
-                    TSM_ASSERT_DELTA("hu", huResult[i], expectedHu[i], delta);
+                    TSM_ASSERT_DELTA("[global] hu", huResult[i], expectedHu[i], delta);
+            }
+            
+            // LOCAL
+            
+            // h, hu and b input buffers
+            cl::Buffer hBufLocal(wrapperLocal->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), h);
+            cl::Buffer huBufLocal(wrapperLocal->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), hu);
+            
+            // net update and maxwave buffers
+            cl::Buffer hLeftBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), hNetUpdateLeft);
+            cl::Buffer hRightBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), hNetUpdateRight);
+            cl::Buffer huLeftBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), huNetUpdateLeft);
+            cl::Buffer huRightBufLocal(wrapperLocal->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), updateCount*sizeof(float), huNetUpdateRight);
+            
+            k = &(wrapperLocal->kernels[kernelName]);
+            size_t groupSize = wrapperLocal->getKernelGroupSize(*k, wrapperLocal->devices[0]);
+            k->setArg(0, ds_dt);
+            k->setArg(1, hBufLocal);
+            k->setArg(2, huBufLocal);
+            k->setArg(3, hLeftBufLocal);
+            k->setArg(4, hRightBufLocal);
+            k->setArg(5, huLeftBufLocal);
+            k->setArg(6, huRightBufLocal);
+            k->setArg(7, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(8, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(9, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(10, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+            k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+            if(kernelDirection == DIR_X) {
+                // x-2, y
+                k->setArg(13, (unsigned int)kernelRangeX);
+                k->setArg(14, (unsigned int)kernelRangeY);
+            } else {
+                // x, y-2
+                k->setArg(13, (unsigned int)kernelRangeX);
+                k->setArg(14, (unsigned int)kernelRangeY+1);
+            }
+            
+            cl::NDRange globalRange;
+            cl::NDRange localRange;
+            
+            if(kernelDirection == DIR_X) {
+                globalRange = cl::NDRange(wrapperLocal->getKernelRange(groupSize, kernelRangeX), kernelRangeY);
+                localRange = cl::NDRange(groupSize, 1);
+            } else {
+                globalRange = cl::NDRange(kernelRangeX, wrapperLocal->getKernelRange(groupSize, kernelRangeY));
+                localRange = cl::NDRange(1, groupSize);
+            }
+            wrapperLocal->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange);
+            
+            
+            wrapperLocal->queues[0].enqueueReadBuffer(hBufLocal, CL_TRUE, 0, sourceCount*sizeof(float), hResult);
+            wrapperLocal->queues[0].enqueueReadBuffer(huBufLocal, CL_TRUE, 0, sourceCount*sizeof(float), huResult);
+            
+            for(int i = 0; i < sourceCount; i++) {
+                
+                if(expectedH[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[local] h", expectedH[i], hResult[i], delta);
+                if(expectedHu[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[local] hu", expectedHu[i], huResult[i], delta);
             }
         }
         
@@ -447,7 +510,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             float dt_dx = 0.5;
             
             _runUpdate( "dimensionalSplitting_XSweep_updateUnknowns",
-                    srcCount, updCount, x-2, y,
+                    srcCount, updCount, x-2, y, DIR_X,
                     dt_dx,
                     h, hu,
                     hNetUpdateLeft, hNetUpdateRight,
@@ -521,7 +584,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             float dt_dx = 0.5;
             
             _runUpdate( "dimensionalSplitting_YSweep_updateUnknowns",
-                    srcCount, updCount, x, y-2,
+                    srcCount, updCount, x, y-2, DIR_Y,
                     dt_dx,
                     h, hu,
                     hNetUpdateLeft, hNetUpdateRight,

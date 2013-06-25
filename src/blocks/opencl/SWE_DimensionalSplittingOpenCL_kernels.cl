@@ -333,8 +333,8 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     
     barrier(CLK_LOCAL_MEM_FENCE);
     
-    event[0] = async_work_group_strided_copy(hScratch, h+rightOffset, num, rows, 0);
-    event[1] = async_work_group_strided_copy(huScratch, hu+rightOffset, num, rows, 0);
+    event[0] = async_work_group_strided_copy(h+rightOffset, hScratch, num, rows, 0);
+    event[1] = async_work_group_strided_copy(hu+rightOffset, huScratch, num, rows, 0);
     wait_group_events(2, event);
 #endif
 }
@@ -358,8 +358,22 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     __global float* hNetUpdatesLeft,
     __global float* hNetUpdatesRight,
     __global float* hvNetUpdatesLeft,
-    __global float* hvNetUpdatesRight)
+    __global float* hvNetUpdatesRight
+#ifdef MEM_LOCAL
+    ,
+    __local float* hScratch,
+    __local float* hvScratch,
+    __local float* hNetUpdatesLeftScratch,
+    __local float* hNetUpdatesRightScratch,
+    __local float* hvNetUpdatesLeftScratch,
+    __local float* hvNetUpdatesRightScratch,
+    __const uint cols,
+    __const uint edges // rows-1
+#endif
+)
 {
+#ifndef MEM_LOCAL
+    // GLOBAL 
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
@@ -375,6 +389,44 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     
     // Catch negative heights
     h[cellId] = fmax(h[cellId], 0.f);
+#else
+    // LOCAL
+    uint id = get_local_id(1);
+    uint gid = get_group_id(1);
+    uint localsize = get_local_size(1);
+    uint varOffset = 1 + gid*localsize + get_group_id(0)*(edges+1); // skip first row (ghost)
+    uint updLeftOffset = gid*localsize + get_group_id(0)*edges;
+    uint updRightOffset = updLeftOffset + 1;
+    
+    uint num = min(localsize, edges-1-(gid*localsize));
+    
+    event_t event[6];
+    event[0] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+updRightOffset, num, 0);
+    event[1] = async_work_group_copy(hNetUpdatesRightScratch, hNetUpdatesRight+updLeftOffset, num, 0);
+    event[2] = async_work_group_copy(hvNetUpdatesLeftScratch, hvNetUpdatesLeft+updRightOffset, num, 0);
+    event[3] = async_work_group_copy(hvNetUpdatesRightScratch, hvNetUpdatesRight+updLeftOffset, num, 0);
+    event[4] = async_work_group_copy(hScratch, h+varOffset, num, 0);
+    event[5] = async_work_group_copy(hvScratch, hv+varOffset, num, 0);
+    wait_group_events(6, event);
+    
+    // make sure we stay inside bounds
+    if(id < num) {
+        // update heights
+        hScratch[id] -= dt_dy * (hNetUpdatesRightScratch[id] + hNetUpdatesLeftScratch[id]);
+        // Update momentum in x-direction
+        hvScratch[id] -= dt_dy * (hvNetUpdatesRightScratch[id] + hvNetUpdatesLeftScratch[id]);
+        
+        // Catch negative heights
+        hScratch[id] = fmax(hScratch[id], 0.f);
+    }
+    
+    // make sure all operations on local memory have finished
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    event[0] = async_work_group_copy(h+varOffset, hScratch,  num, 0);
+    event[1] = async_work_group_copy(hv+varOffset, hvScratch, num, 0);
+    wait_group_events(2, event);
+#endif
 }
 
 /// Kernel to reduce the maximum value of an array (or linearized 2D grid) (CPU Version)

@@ -6,7 +6,7 @@
 #include "tools/help.hh"
 
 //! Type to set options for kernel optimization types (e.g. memory)
-typedef int KernelType;
+typedef enum {MEM_LOCAL, MEM_GLOBAL} KernelType;
 
 /**
  * OpenCL Dimensional Splitting Block
@@ -97,12 +97,7 @@ protected:
         return properties;
     }
     
-public:
-    //! Option denoting global device memory
-    const static KernelType GLOBAL = 1;
-    //! Option denoting local device memory
-    const static KernelType LOCAL = 2;
-    
+public:    
     /// Dimensional Splitting Constructor (OpenCL)
     /**
      * @param l_nx The grid size in x-direction (excluding ghost cells)
@@ -116,7 +111,7 @@ public:
         float l_dx, float l_dy,
         cl_device_type preferredDeviceType = 0,
         unsigned int maxDevices = 0,
-        KernelType kernelType = GLOBAL);
+        KernelType kernelType = MEM_GLOBAL);
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();

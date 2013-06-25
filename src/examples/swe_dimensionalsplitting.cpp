@@ -53,7 +53,7 @@ int main( int argc, char** argv ) {
     unsigned int l_maxDevices = 0;
     
     //! Chosen kernel optimization type
-    KernelType l_kernelType = SWE_DimensionalSplittingOpenCL::GLOBAL;
+    KernelType l_kernelType = MEM_GLOBAL;
     
     //! type of boundary conditions at LEFT, RIGHT, TOP, and BOTTOM boundary
     BoundaryType l_boundaryTypes[4];
@@ -127,9 +127,9 @@ int main( int argc, char** argv ) {
             case 'm':
                 optstr = std::string(optarg);
                 if(optstr == "g" || optstr == "global")
-                    l_kernelType = SWE_DimensionalSplittingOpenCL::GLOBAL;
+                    l_kernelType = MEM_GLOBAL;
                 else
-                    l_kernelType = SWE_DimensionalSplittingOpenCL::LOCAL;
+                    l_kernelType = MEM_LOCAL;
             case 'n':
                 l_numberOfCheckPoints = atoi(optarg);
                 break;

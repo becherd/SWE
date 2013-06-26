@@ -1,10 +1,10 @@
 #include <iostream>
 #include <unistd.h>
 
-#ifndef USEOPENCL
-#include "blocks/SWE_DimensionalSplitting.hh"
-#else
+#ifdef USEOPENCL
 #include "blocks/opencl/SWE_DimensionalSplittingOpenCL.hh"
+#else
+#include "blocks/SWE_DimensionalSplitting.hh"
 #endif
 #include "scenarios/SWE_Scenario.hh"
 #include "scenarios/SWE_PartialDambreak.hh"
@@ -48,12 +48,14 @@ int main( int argc, char** argv ) {
     
     //! the total simulation time
     int l_simulationTime = 0.0;
-    
+
+#ifdef USEOPENCL
     //! Maximum number of computing devices to be used (OpenCL specific, 0 = unlimited)
     unsigned int l_maxDevices = 0;
     
     //! Chosen kernel optimization type
     KernelType l_kernelType = MEM_GLOBAL;
+#endif
     
     //! type of boundary conditions at LEFT, RIGHT, TOP, and BOTTOM boundary
     BoundaryType l_boundaryTypes[4];
@@ -122,14 +124,19 @@ int main( int argc, char** argv ) {
                 break;
 #endif
             case 'l':
+#ifdef USEOPENCL
                 l_maxDevices = atoi(optarg);
                 break;
+#endif
             case 'm':
+#ifdef USEOPENCL
                 optstr = std::string(optarg);
                 if(optstr == "g" || optstr == "global")
                     l_kernelType = MEM_GLOBAL;
                 else
                     l_kernelType = MEM_LOCAL;
+#endif
+                break;
             case 'n':
                 l_numberOfCheckPoints = atoi(optarg);
                 break;

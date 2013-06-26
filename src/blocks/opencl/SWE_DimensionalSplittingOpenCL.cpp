@@ -80,6 +80,28 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
     std::cout << std::endl;
 }
 
+void SWE_DimensionalSplittingOpenCL::printProfilingInformation()
+{
+    std::cout << "OpenCL Kernel and Memory Operation Profiling:" << std::endl;
+    std::map<std::string, profilingInfo>::const_iterator opItr;
+    for(opItr = profilingEvents.begin(); opItr != profilingEvents.end(); ++opItr) {
+        std::cout << "  " << opItr->first << ": " << std::endl;
+        
+        std::map< ProfilingState, cl_ulong >::const_iterator stateItr;
+        for(stateItr = opItr->second.second.begin(); stateItr != opItr->second.second.end(); ++stateItr) {
+            std::cout << "    ";
+            if(stateItr->first == PROFILING_QUEUE)
+                std::cout << "QUEUE";
+            else if(stateItr->first == PROFILING_SUBMIT)
+                std::cout << "SUBMIT";
+            else
+                std::cout << "EXEC";
+            
+            std::cout << ": " << stateItr->second << " ns" << std::endl;
+        }
+    }
+}
+ 
 void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent, cl::Event *event) {
     cl::Kernel *k;
     

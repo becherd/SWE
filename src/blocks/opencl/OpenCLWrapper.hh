@@ -8,6 +8,13 @@
 #include <map>
 #include <cmath>
 
+#include <pthread.h>
+
+//! Type to identifiy different execution states (queued<->submitted, submitted<->start, start<->end)
+typedef enum { PROFILING_QUEUE, PROFILING_SUBMIT, PROFILING_EXEC } ProfilingState;
+//! Profiling information passed to the profiling callback function
+typedef std::pair< pthread_mutex_t* , std::map<ProfilingState, cl_ulong> > profilingInfo;
+
 /// OpenCL Wrapper
 /**
  * Simplifies much of the commonly needed boilerplate code
@@ -38,6 +45,12 @@ protected:
     cl::Program program;
     //! OpenCL Kernels in the program identified by kernel function name
     std::map<std::string, cl::Kernel> kernels;
+    
+    //! Kernel and memory profiling information
+    std::map < std::string, profilingInfo > profilingEvents;
+
+    //! Mutex for exclusive access to profilingEvents
+    pthread_mutex_t profilingMutex;
     
     /// Display info about an OpenCL Exception and exit application
     /**
@@ -142,7 +155,7 @@ protected:
             
             // for each computing device, create an in-order command queue
             for(unsigned int i = 0; i < devices.size(); i++) { 
-                queues.push_back(cl::CommandQueue(context, devices[i]));
+                queues.push_back(cl::CommandQueue(context, devices[i], queueProperties));
             }
         } catch (cl::Error &e) {
             std::cerr << "Error: Unable to create OpenCL context: Error " << e.err() << std::endl;
@@ -187,6 +200,51 @@ public:
         
         setupPlatform();
         setupContext(preferredDeviceType, queueProperties);
+        
+        // init profiling mutex
+        pthread_mutex_init(&profilingMutex, NULL);
+    }
+    
+    /// Destructor
+    ~OpenCLWrapper() {
+        pthread_mutex_destroy(&profilingMutex);
+    }
+    
+    /// Get pointer to profiling info supplied to profiling callback for a certain description (kernel name)
+    /**
+     * @param description The description (e.g. Kernel name)
+     */
+    inline profilingInfo* getProfilingCallbackInfo(const char* description) {
+        profilingInfo *info = &profilingEvents[std::string(description)];
+        info->first = &profilingMutex;
+        return info;
+    }
+    
+    /// Add an OpenCL event ot the list of profiled events
+    /**
+     * @param e The OpenCL event to profile
+     * @param description The description (e.g. Kernel name)
+     */
+    inline void addProfilingEvent(cl::Event &e, const char* description) {
+        e.setCallback(CL_COMPLETE, OpenCLWrapper::eventProfilingCallback, (void*)getProfilingCallbackInfo(description));
+    }
+    
+    /// Callback function to profile events, e.g. measure kernel execution time
+    static void eventProfilingCallback(cl_event event, cl_int command_exec_status, void *user_data)
+    {
+        cl_ulong queueTime, submitTime, startTime, endTime;
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &queueTime, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &submitTime, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &startTime, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime, NULL);
+        
+        profilingInfo *info = (profilingInfo *)user_data;
+    
+        pthread_mutex_lock(info->first);
+        (info->second)[PROFILING_QUEUE] += (submitTime - queueTime);
+        (info->second)[PROFILING_SUBMIT] += (startTime - submitTime);
+        (info->second)[PROFILING_EXEC] += (endTime - startTime);
+        pthread_mutex_unlock(info->first);
     }
     
     void buildProgram(cl::Program::Sources &kernelSources, const std::string &options = std::string()) {

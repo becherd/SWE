@@ -87,13 +87,13 @@ protected:
     
     /// Get the properties to be used for OpenCL Command Queues (e.g. out-of-order execution)
     inline cl_command_queue_properties getCommandQueueProperties() {
-        cl_command_queue_properties properties;
+        cl_command_queue_properties properties = 0;
         
-        properties = CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE;
-#ifndef NDEBUG
-        // Enable profiling in debug mode
-        properties |= CL_QUEUE_PROFILING_ENABLE;
-#endif
+        // Enable out of order execution
+//#ifndef NDEBUG
+//        // Enable profiling in debug mode
+          properties |= CL_QUEUE_PROFILING_ENABLE;
+//#endif
         return properties;
     }
     
@@ -115,6 +115,9 @@ public:
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();
+    
+    /// Print information about OpenCL kernel execution and memory operations
+    void printProfilingInformation();
     
     /// Set conditions according to boundary types
     /**

@@ -554,5 +554,10 @@ int main( int argc, char** argv ) {
     // print average time per cell per iteration
     tools::Logger::logger.printAverageCPUTimePerCellPerIteration(l_iterations, l_nX*(l_nY+2)); 
     
+#ifdef USEOPENCL
+    // print opencl stats
+    l_dimensionalSplitting.printProfilingInformation();
+#endif
+    
     return 0;
 }

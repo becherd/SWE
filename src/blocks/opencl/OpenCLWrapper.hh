@@ -135,7 +135,9 @@ protected:
         // create context of chosen device type
         try {        
             // TODO: supply callback function
-            context = cl::Context(deviceType);
+            cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform(), 0};        
+            context = cl::Context(deviceType, properties);
+            
             // Read devices in context
             context.getInfo(CL_CONTEXT_DEVICES, &devices);
             

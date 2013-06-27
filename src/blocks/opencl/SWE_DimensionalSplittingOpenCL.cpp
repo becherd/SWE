@@ -299,6 +299,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
         size_t length = bufferChunks[i].second;
         try {
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length), cl::NullRange, NULL, &event);
+            addProfilingEvent(event, "set top/bottom boundary");
         } catch(cl::Error &e) {
             handleError(e, "Unable to enqueue setBottomTopBoundary kernel");
         }
@@ -319,6 +320,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     try {
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+        addProfilingEvent(event, "set left boundary");
     } catch(cl::Error &e) {
         handleError(e, "Unable to enqueue setLeftBoundary kernel");
     }
@@ -339,6 +341,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     try {
         queues[useDevices-1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+        addProfilingEvent(event, "set right boundary");
     } catch(cl::Error &e) {
         handleError(e, "Unable to enqueue setRightBoundary kernel");
     }
@@ -364,6 +367,7 @@ void SWE_DimensionalSplittingOpenCL::syncBuffersBeforeRead(std::vector< std::pai
             size_t size = ((j == useDevices-1) ? length : (length-1)) * colSize;
             float* dst = buffers[i].second + (start*y);
             queues[j].enqueueReadBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, dst, NULL, &event);
+            addProfilingEvent(event, "sync before read");
             events.push_back(event);
         }
     }
@@ -385,6 +389,7 @@ void SWE_DimensionalSplittingOpenCL::syncBuffersAfterWrite(std::vector< std::pai
             size_t size = length * colSize;
             float* src = buffers[i].second + (start*y);
             queues[j].enqueueWriteBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, src, NULL, &event);
+            addProfilingEvent(event, "sync after write");
             events.push_back(event);
         }
     }
@@ -516,6 +521,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             cl::Event sweepEvent;
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, NULL, &sweepEvent);
+            addProfilingEvent(sweepEvent, "X-Sweep");
             
             // reduce waveSpeed Maximum
             cl::Event maximumEvent;
@@ -530,7 +536,9 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         float maxWaveSpeed = -INFINITY;
         for(unsigned int i = 0; i < useDevices; i++) {
             float result;
-            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result);
+            cl::Event e;
+            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result, NULL, &e);
+            addProfilingEvent(e, "read maxWaveSpeed");
             maxWaveSpeed = std::max(maxWaveSpeed, result);
         }
         
@@ -545,12 +553,16 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             cl::Event e;
             queues[i].enqueueCopyBuffer(hNetUpdatesLeft[i+1], hNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
             deviceWaitList[i].push_back(e);
+            addProfilingEvent(e, "copy netupdates");
             queues[i].enqueueCopyBuffer(hNetUpdatesRight[i+1], hNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
             deviceWaitList[i].push_back(e);
+            addProfilingEvent(e, "copy netupdates");
             queues[i].enqueueCopyBuffer(huNetUpdatesLeft[i+1], huNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
             deviceWaitList[i].push_back(e);
+            addProfilingEvent(e, "copy netupdates");
             queues[i].enqueueCopyBuffer(huNetUpdatesRight[i+1], huNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
             deviceWaitList[i].push_back(e);
+            addProfilingEvent(e, "copy netupdates");
         }
         
         // enqueue updateUnknowns Kernel (X-Sweep)
@@ -594,6 +606,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             cl::Event e;
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
+            addProfilingEvent(e, "X-Update");
             waitList.push_back(e);
         }
         
@@ -607,8 +620,10 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
             deviceWaitList[i+1].push_back(e);
+            addProfilingEvent(e, "copy edges");
             queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
             deviceWaitList[i+1].push_back(e);
+            addProfilingEvent(e, "copy edges");
             // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
         }
         
@@ -656,6 +671,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             cl::Event e;
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
+            addProfilingEvent(e, "Y-Sweep");
             deviceWaitList[i].clear();
             deviceWaitList[i].push_back(e);
         }
@@ -700,6 +716,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             cl::Event e;
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
+            addProfilingEvent(e, "Y-Update");
             waitList.push_back(e);
         }
         
@@ -713,8 +730,10 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             deviceWaitList[i+1].clear();
             
             queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            addProfilingEvent(e, "copy edges (after Y-update)");
             waitList.push_back(e);
             queues[i+1].enqueueCopyBuffer(hvd[i], hvd[i+1], offset, 0, colSize, &waitList, &e);
+            addProfilingEvent(e, "copy edges (after Y-update)");
             waitList.push_back(e);
             // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
         }

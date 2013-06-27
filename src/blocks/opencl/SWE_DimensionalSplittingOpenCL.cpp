@@ -212,7 +212,7 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
     size_t y = h.getRows();
     size_t colSize = y * sizeof(cl_float);
     
-    calculateBufferChunks(y, useDevices);
+    calculateBufferChunks(h.getCols(), useDevices);
     
     for(unsigned int i = 0; i < useDevices; i++) {
         size_t size = colSize * bufferChunks[i].second;

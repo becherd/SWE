@@ -72,17 +72,19 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
+    size_t edges = get_global_size(0);
     
     size_t leftId = colMajor(x, y, rows);
     size_t rightId = colMajor(x+1, y, rows);
+    size_t updateId = rowMajor(x, y, edges);
     
     computeNetUpdates(
         h[leftId], h[rightId],
         hu[leftId], hu[rightId],
         b[leftId], b[rightId],
-        &(hNetUpdatesLeft[leftId]), &(hNetUpdatesRight[leftId]),
-        &(huNetUpdatesLeft[leftId]), &(huNetUpdatesRight[leftId]),
-        &(maxWaveSpeed[leftId])
+        &(hNetUpdatesLeft[updateId]), &(hNetUpdatesRight[updateId]),
+        &(huNetUpdatesLeft[updateId]), &(huNetUpdatesRight[updateId]),
+        &(maxWaveSpeed[updateId])
     );
 #else
     // LOCAL
@@ -102,7 +104,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     
     uint id = get_local_id(0);
     
-    if(get_global_id(0) < edges) {
+    if(id < num) {
         computeNetUpdates(
             hScratch[id], hScratch[id+1],
             huScratch[id], huScratch[id+1],
@@ -118,15 +120,17 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     
     // write local memory back to global memory
     num--; // we're writing one update less than number of cells
-    event[0] = async_work_group_strided_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, rows, 0);
-    event[1] = async_work_group_strided_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, rows, 0);
-    event[2] = async_work_group_strided_copy(huNetUpdatesLeft+offset, huNetUpdatesLeftScratch, num, rows, 0);
-    event[3] = async_work_group_strided_copy(huNetUpdatesRight+offset, huNetUpdatesRightScratch, num, rows, 0);
+    offset = gid * localsize + get_group_id(1) * edges;
+    
+    event[0] = async_work_group_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, 0);
+    event[1] = async_work_group_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, 0);
+    event[2] = async_work_group_copy(huNetUpdatesLeft+offset, huNetUpdatesLeftScratch, num, 0);
+    event[3] = async_work_group_copy(huNetUpdatesRight+offset, huNetUpdatesRightScratch, num, 0);
     
     // Reduce maximum
     // TODO: reduce maximum in local memory
     // maxWaveSpeed[gid] = maxWave;
-    event_t waveEvent = async_work_group_strided_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, rows, 0);
+    event_t waveEvent = async_work_group_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, 0);
     
     // Wait for async transfers
     wait_group_events(4, event);
@@ -280,7 +284,7 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     __local float* hNetUpdatesRightScratch,
     __local float* huNetUpdatesLeftScratch,
     __local float* huNetUpdatesRightScratch,
-    __const uint edges, // cols-1
+    __const uint edges, // cols-2
     __const uint rows
 #endif
         )
@@ -291,33 +295,35 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
     
-    size_t leftId = colMajor(x, y, rows); // [x][y]
-    size_t rightId = colMajor(x+1, y, rows); // [x+1][y]
+    size_t cellId = colMajor(x+1, y, rows);
+    size_t leftId = rowMajor(x, y, get_global_size(0)+1);
+    size_t rightId = rowMajor(x+1, y, get_global_size(0)+1);
     
     // update heights
-    h[rightId] -= dt_dx * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
+    h[cellId] -= dt_dx * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
     // Update momentum in x-direction
-    hu[rightId] -= dt_dx * (huNetUpdatesRight[leftId] + huNetUpdatesLeft[rightId]);
+    hu[cellId] -= dt_dx * (huNetUpdatesRight[leftId] + huNetUpdatesLeft[rightId]);
     
     // Catch negative heights
-    h[rightId] = fmax(h[rightId], 0.f);
+    h[cellId] = fmax(h[cellId], 0.f);
 #else
     // LOCAL
     uint id = get_local_id(0);
     uint gid = get_group_id(0);
     uint localsize = get_local_size(0);
-    uint leftOffset = gid*localsize*rows + get_group_id(1);
-    uint rightOffset = leftOffset+rows;
+    uint cellOffset = (gid*localsize + 1)*rows + get_group_id(1); // skip ghost column
+    uint leftOffset = gid * localsize + get_group_id(1) * (edges+1);
+    uint rightOffset = leftOffset+1;
     
     uint num = min(localsize, edges-(gid*localsize));
     
     event_t event[6];
-    event[0] = async_work_group_strided_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, rows, 0);
-    event[1] = async_work_group_strided_copy(hNetUpdatesRightScratch, hNetUpdatesRight+leftOffset, num, rows, 0);
-    event[2] = async_work_group_strided_copy(huNetUpdatesLeftScratch, huNetUpdatesLeft+rightOffset, num, rows, 0);
-    event[3] = async_work_group_strided_copy(huNetUpdatesRightScratch, huNetUpdatesRight+leftOffset, num, rows, 0);
-    event[4] = async_work_group_strided_copy(hScratch, h+rightOffset, num, rows, 0);
-    event[5] = async_work_group_strided_copy(huScratch, hu+rightOffset, num, rows, 0);
+    event[0] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, 0);
+    event[1] = async_work_group_copy(hNetUpdatesRightScratch, hNetUpdatesRight+leftOffset, num, 0);
+    event[2] = async_work_group_copy(huNetUpdatesLeftScratch, huNetUpdatesLeft+rightOffset, num, 0);
+    event[3] = async_work_group_copy(huNetUpdatesRightScratch, huNetUpdatesRight+leftOffset, num, 0);
+    event[4] = async_work_group_strided_copy(hScratch, h+cellOffset, num, rows, 0);
+    event[5] = async_work_group_strided_copy(huScratch, hu+cellOffset, num, rows, 0);
     wait_group_events(6, event);
     
     // make sure we stay inside bounds
@@ -333,8 +339,8 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     
     barrier(CLK_LOCAL_MEM_FENCE);
     
-    event[0] = async_work_group_strided_copy(h+rightOffset, hScratch, num, rows, 0);
-    event[1] = async_work_group_strided_copy(hu+rightOffset, huScratch, num, rows, 0);
+    event[0] = async_work_group_strided_copy(h+cellOffset, hScratch, num, rows, 0);
+    event[1] = async_work_group_strided_copy(hu+cellOffset, huScratch, num, rows, 0);
     wait_group_events(2, event);
 #endif
 }

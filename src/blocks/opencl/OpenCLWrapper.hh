@@ -52,6 +52,9 @@ protected:
     //! Mutex for exclusive access to profilingEvents
     pthread_mutex_t profilingMutex;
     
+    //! Maximum work group size to use for kernel execution
+    size_t workGroupSize;
+    
     /// Display info about an OpenCL Exception and exit application
     /**
      * @param e The OpenCL Error
@@ -173,7 +176,7 @@ protected:
     * @return The work group size
     */
    inline size_t getKernelGroupSize( const cl::Kernel &kernel, const cl::Device &device ) {
-       return kernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+       return std::min(workGroupSize, kernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device));
    }
    
    /// Calculate kernel range so that the group size divides kernel range
@@ -191,9 +194,11 @@ public:
     /**
      * @param preferredDeviceType The preferred OpenCL device type (CPU, GPU, ..)
      * @param queueProperties OpenCL queue options for device command queues
+     * @param _workGroupSize The maximum work group size to use for kernel execution
      */
     OpenCLWrapper(  cl_device_type preferredDeviceType = 0,
-                    cl_command_queue_properties queueProperties = 0) {
+                    cl_command_queue_properties queueProperties = 0,
+                    size_t _workGroupSize = 1024) : workGroupSize(_workGroupSize){
         // List of available OpenCL device types, highest priority first
         deviceTypes.push_back(CL_DEVICE_TYPE_ACCELERATOR);
         deviceTypes.push_back(CL_DEVICE_TYPE_GPU);

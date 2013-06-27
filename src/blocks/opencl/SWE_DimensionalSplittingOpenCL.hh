@@ -106,12 +106,15 @@ public:
      * @param l_dy The mesh size of the Cartesian grid in y-direction
      * @param preferredDeviceType The preferred OpenCL device type to use for computation
      * @param maxDevices Maximum number of computing devices to be used (0 = unlimited)
+     * @param kernelType The kernel memory type to use (MEM_GLOBAL or MEM_LOCAL)
+     * @param workGroupSize The maximum work group size to use (should be a power of two)
      */
     SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
         float l_dx, float l_dy,
         cl_device_type preferredDeviceType = 0,
         unsigned int maxDevices = 0,
-        KernelType kernelType = MEM_GLOBAL);
+        KernelType kernelType = MEM_GLOBAL,
+        size_t workGroupSize = 1024);
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();

@@ -15,9 +15,10 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     float l_dx, float l_dy,
     cl_device_type preferredDeviceType,
     unsigned int maxDevices,
-    KernelType _kernelType):
+    KernelType _kernelType,
+    size_t _workGroupSize):
     SWE_Block(l_nx, l_ny, l_dx, l_dy),
-    OpenCLWrapper(preferredDeviceType, getCommandQueueProperties()),
+    OpenCLWrapper(preferredDeviceType, getCommandQueueProperties(), _workGroupSize),
     kernelType(_kernelType)
 {
     cl::Program::Sources kernelSources;
@@ -76,7 +77,8 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
     if(kernelType == MEM_GLOBAL) std::cout << "global";
     else std::cout << "local";
     std::cout << " memory." << std::endl;
-    
+    if(kernelType == MEM_LOCAL)
+        std::cout << "Maximum work group size " << workGroupSize << std::endl;
     std::cout << std::endl;
 }
 
@@ -97,7 +99,7 @@ void SWE_DimensionalSplittingOpenCL::printProfilingInformation()
             else
                 std::cout << "EXEC";
             
-            std::cout << ": " << stateItr->second << " ns" << std::endl;
+            std::cout << ": " << float(stateItr->second)/1.0e9 << " seconds" << std::endl;
         }
     }
 }
@@ -158,7 +160,7 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
         k = &(kernels["reduceMaximum"]);
         size_t stride = 1;
         // get optimal work group size
-        size_t workGroup = k->getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+        size_t workGroup = getKernelGroupSize(*k, device);
         assert(workGroup > 1);
         
         size_t groupCount = (size_t)ceil((float)length/(float)(workGroup*stride));

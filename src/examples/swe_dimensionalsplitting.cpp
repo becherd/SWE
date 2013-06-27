@@ -53,6 +53,9 @@ int main( int argc, char** argv ) {
     //! Maximum number of computing devices to be used (OpenCL specific, 0 = unlimited)
     unsigned int l_maxDevices = 0;
     
+    //! Maximum kernel group size
+    size_t l_maxGroupSize = 1024;
+    
     //! Chosen kernel optimization type
     KernelType l_kernelType = MEM_GLOBAL;
 #endif
@@ -91,6 +94,7 @@ int main( int argc, char** argv ) {
     // -f <float>      // output coarseness factor
     // -l <num>        // maximum number of computing devices
     // -m <code>       // Kernel memory optimization type
+    // -g <num         // Kernel work group size
     // -n <num>        // Number of checkpoints
     // -t <float>      // Simulation time in seconds
     // -s <scenario>   // Artificial scenario name ("artificialtsunami", "partialdambreak")
@@ -101,7 +105,7 @@ int main( int argc, char** argv ) {
     int c;
     int showUsage = 0;
     std::string optstr;
-    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:l:m:")) != -1) {
+    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:l:m:g:")) != -1) {
         switch(c) {
             case 'x':
                 l_nX = atoi(optarg);
@@ -126,8 +130,13 @@ int main( int argc, char** argv ) {
             case 'l':
 #ifdef USEOPENCL
                 l_maxDevices = atoi(optarg);
-                break;
 #endif
+                break;
+            case 'g':
+#ifdef USEOPENCL
+                l_maxGroupSize = atoi(optarg);
+#endif
+            break;
             case 'm':
 #ifdef USEOPENCL
                 optstr = std::string(optarg);
@@ -240,6 +249,11 @@ int main( int argc, char** argv ) {
         } else {
             if(!l_bathymetryFileName.empty() || !l_displacementFileName.empty())
                 std::cerr << "WARNING: Supplied bathymetry and displacement data will be ignored" << std::endl;
+        }
+        
+        if(l_maxGroupSize == 0 || (l_maxGroupSize & (l_maxGroupSize - 1))) {
+            std::cout << "Group size must be greater than zero and a power of two!" << std::endl;
+            showUsage = 1;
         }
     }
     
@@ -363,7 +377,7 @@ int main( int argc, char** argv ) {
 #ifndef USEOPENCL
     SWE_DimensionalSplitting l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
 #else
-    SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY, 0, l_maxDevices, l_kernelType);
+    SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY, 0, l_maxDevices, l_kernelType, l_maxGroupSize);
     l_dimensionalSplitting.printDeviceInformation();
 #endif
     

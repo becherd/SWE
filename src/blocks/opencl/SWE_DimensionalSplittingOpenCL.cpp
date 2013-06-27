@@ -139,7 +139,8 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             else
                 e = event;    
             try {
-                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);                
+                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);  
+                addProfilingEvent(e, "reduceMaximumCPU");
             } catch(cl::Error &e) {
                 handleError(e, "Unable to enqueue reduceMaximumCPU kernel");
             }
@@ -184,6 +185,7 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
                 e = event;
             try {
                 queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);                
+                addProfilingEvent(e, "reduceMaximum");
             } catch(cl::Error &e) {
                 handleError(e, "Unable to enqueue reduceMaximum kernel");
             }

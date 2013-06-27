@@ -109,6 +109,8 @@ vars.AddVariables(
 
   BoolVariable( 'disableUnitTests', 'do not build unit test targets', False ),
   
+  BoolVariable( 'useNetCDFCache', 'load full netcdf files into memory for faster access', False ),
+  
   BoolVariable( 'xmlRuntime', 'use a xml-file for runtime parameters', False )
 )
 
@@ -255,6 +257,9 @@ elif env['solver'] == 'hybrid':
   env.Append(CPPDEFINES=['WAVE_PROPAGATION_SOLVER=0'])
 elif env['solver'] == 'fwavevec':
   env.Append(CPPDEFINES=['WAVE_PROPAGATION_SOLVER=4'])
+
+if env['useNetCDFCache']:
+    env.Append(CPPDEFINES=['NETCDF_CACHE'])
 
 # set the precompiler flags for CUDA
 if env['parallelization'] in ['cuda', 'mpi_with_cuda']:

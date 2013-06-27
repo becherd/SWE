@@ -53,7 +53,10 @@ protected:
     float bathymetry_top;
     //! The NetCDF bathymetry step width in y dimension (step width between two cells)
     float bathymetry_y_step;
-    
+#ifdef NETCDF_CACHE
+    //! NetCDF bathymetry z data as cache (for fast read access)
+    float *bathymetry_z_cache;
+#endif
     
     //! The NetCDF displacement file ID
     int displacement_file_id;
@@ -85,6 +88,10 @@ protected:
     float displacement_top;
     //! The NetCDF displacement step width in y dimension (step width between two cells)
     float displacement_y_step;
+#ifdef NETCDF_CACHE
+    //! NetCDF displacement z data as cache (for fast read access)
+    float *displacement_z_cache;
+#endif
     
     /// Load both the bathymetry and displacement file
     /**
@@ -123,6 +130,13 @@ protected:
         // Allocate some memory for the dimensions
         bathymetry_x_values = new float[bathymetry_x_len];
         bathymetry_y_values = new float[bathymetry_y_len];
+        
+#ifdef NETCDF_CACHE
+        // Allocate memory for netcdf bathymetry cache
+        bathymetry_z_cache = new float[bathymetry_y_len*bathymetry_x_len];
+        // Load complete var
+        nc_get_var_float(bathymetry_file_id, bathymetry_z_id, bathymetry_z_cache);
+#endif
         
         // Read dimensions from file
         retval = nc_get_var_float(bathymetry_file_id, bathymetry_x_id, bathymetry_x_values);
@@ -181,6 +195,13 @@ protected:
         // Allocate some memory for the dimensions
         displacement_x_values = new float[displacement_x_len];
         displacement_y_values = new float[displacement_y_len];
+        
+#ifdef NETCDF_CACHE
+        // Allocate memory for netcdf bathymetry cache
+        displacement_z_cache = new float[displacement_y_len*displacement_x_len];
+        // Load complete var
+        nc_get_var_float(displacement_file_id, displacement_z_id, displacement_z_cache);
+#endif
         
         // Read dimensions from file
         retval = nc_get_var_float(displacement_file_id, displacement_x_id, displacement_x_values);
@@ -311,6 +332,46 @@ protected:
         return searchIndex;
     }
     
+    /// Read the bathymetry value at a specified netCDF index
+    /**
+     * This is a wrapper around a NetCDF library function to load data from the
+     * NetCDF file. Since loading every value at once is very slow, we are 
+     * caching the data file in-memory for fast access (if NETCDF_CACHE is set)
+     * 
+     * @param x The x index
+     * @param y The y index
+     */
+    float readBathymetryValue(size_t x, size_t y) {
+#ifdef NETCDF_CACHE
+        return bathymetry_z_cache[y*bathymetry_x_len + x];
+#else
+        float bathymetry;
+        int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &bathymetry);
+        if(status != NC_NOERR) handleNetCDFError(status);
+        return bathymetry;
+#endif
+    }
+    
+    /// Read the bathymetry value at a specified netCDF index
+    /**
+     * This is a wrapper around a NetCDF library function to load data from the
+     * NetCDF file. Since loading every value at once is very slow, we are 
+     * caching the data file in-memory for fast access (if NETCDF_CACHE is set)
+     * 
+     * @param x The x index
+     * @param y The y index
+     */
+    float readDisplacementValue(size_t x, size_t y) {
+#ifdef NETCDF_CACHE
+        return displacement_z_cache[y*displacement_x_len + x];
+#else
+        float displacement;
+        int status = nc_get_var1_float(displacement_file_id, displacement_z_id, (const size_t *)index, &displacement);
+        if(status != NC_NOERR) handleNetCDFError(status);
+        return displacement;
+#endif
+    }
+    
     /// Checks if a supplied value lies between two boundaries 
     /**
      * @param value The value to perform the boundary check on
@@ -331,18 +392,11 @@ protected:
      * @return The z value (bathymetry) read from data file
      */
     float getInitialBathymetry(float x, float y) {
-        // Index array for reading values from NetCDF
-        size_t index[2];
-        // y index
-        index[0] = getIndex1D(y, bathymetry_bottom, bathymetry_y_step, bathymetry_y_values, bathymetry_y_len);
-        // x index
-        index[1] = getIndex1D(x, bathymetry_left, bathymetry_x_step, bathymetry_x_values, bathymetry_x_len);
-        
-        float bathymetry;
-        int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &bathymetry);
-        if(status != NC_NOERR) handleNetCDFError(status);
-        return bathymetry;
-        
+        // Indices for reading values from NetCDF
+        size_t yIndex = getIndex1D(y, bathymetry_bottom, bathymetry_y_step, bathymetry_y_values, bathymetry_y_len);
+        size_t xIndex = getIndex1D(x, bathymetry_left, bathymetry_x_step, bathymetry_x_values, bathymetry_x_len);
+         
+        return readBathymetryValue(xIndex, yIndex);
     }
     
     /// Read the displacement data (caused by earthquake) from the input file
@@ -356,18 +410,11 @@ protected:
         if(!isBetween(x, displacement_left, displacement_right) || !isBetween(y, displacement_bottom, displacement_top))
             return 0.0;
         
-        // Index array for reading values from NetCDF
-        size_t index[2];
-        // y index
-        index[0] = getIndex1D(y, displacement_bottom, displacement_y_step, displacement_y_values, displacement_y_len);
-        // x index
-        index[1] = getIndex1D(x, displacement_left, displacement_x_step, displacement_x_values, displacement_x_len);
-        
-        
-        float displacement;
-        int status = nc_get_var1_float(displacement_file_id, displacement_z_id, (const size_t *)index, &displacement);
-        if(status != NC_NOERR) handleNetCDFError(status);
-        return displacement;
+        // Indices for reading values from NetCDF
+        size_t yIndex = getIndex1D(y, displacement_bottom, displacement_y_step, displacement_y_values, displacement_y_len);
+        size_t xIndex = getIndex1D(x, displacement_left, displacement_x_step, displacement_x_values, displacement_x_len);
+         
+        return readDisplacementValue(xIndex, yIndex);
     }
 
 public:
@@ -394,6 +441,10 @@ public:
         delete[] bathymetry_y_values;
         delete[] displacement_x_values;
         delete[] displacement_y_values;
+#ifdef NETCDF_CACHE
+        delete[] bathymetry_z_cache;
+        delete[] displacement_z_cache;
+#endif
     }
     
     /**

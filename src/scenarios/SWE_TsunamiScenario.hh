@@ -345,6 +345,8 @@ protected:
 #ifdef NETCDF_CACHE
         return bathymetry_z_cache[y*bathymetry_x_len + x];
 #else
+        // Index array for reading values from NetCDF
+        size_t index[] = {y, x};
         float bathymetry;
         int status = nc_get_var1_float(bathymetry_file_id, bathymetry_z_id, (const size_t *)index, &bathymetry);
         if(status != NC_NOERR) handleNetCDFError(status);
@@ -365,6 +367,8 @@ protected:
 #ifdef NETCDF_CACHE
         return displacement_z_cache[y*displacement_x_len + x];
 #else
+        // Index array for reading values from NetCDF
+        size_t index[] = {y, x};
         float displacement;
         int status = nc_get_var1_float(displacement_file_id, displacement_z_id, (const size_t *)index, &displacement);
         if(status != NC_NOERR) handleNetCDFError(status);

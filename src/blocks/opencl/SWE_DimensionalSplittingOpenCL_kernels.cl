@@ -444,13 +444,13 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
  */
 __kernel void reduceMaximum(
     __global float* values,
-    __const uint length,
-    __const uint stride,
+    __const unsigned int length,
+    __const unsigned int stride,
     __local float* scratch)
 {
-    size_t global_id = get_global_id(0);
-    size_t source_id = stride*global_id;
-    size_t local_id = get_local_id(0);
+    unsigned int global_id = get_global_id(0);
+    unsigned int source_id = stride*global_id;
+    unsigned int local_id = get_local_id(0);
     
     if(source_id < length) {
         scratch[local_id] = values[source_id];
@@ -459,7 +459,7 @@ __kernel void reduceMaximum(
     }
     
     barrier(CLK_LOCAL_MEM_FENCE);
-    for(uint i = 2; i <= get_local_size(0); i <<= 1) {
+    for(unsigned int i = 2; i <= get_local_size(0); i <<= 1) {
         // Fast modulo operation (for i being a power of two)
         if((local_id & (i-1)) == 0) {
             scratch[local_id] = fmax(scratch[ local_id ], scratch[ local_id + (i>>1) ]);
@@ -488,20 +488,23 @@ __kernel void reduceMaximum(
  */
 __kernel void reduceMaximumCPU(
     __global float* values,
-    __const uint length,
-    __const uint block,
-    __const uint stride)
+    __const unsigned int length,
+    __const unsigned int block,
+    __const unsigned int stride)
 {
-    size_t global_id = get_global_id(0);
+    unsigned int global_id = get_global_id(0);
     
-    uint start = global_id * block * stride;
-    uint end = (global_id+1) * block * stride;
+    unsigned long blockstride = (unsigned long)block * (unsigned long)stride;
+    
+    unsigned long start = blockstride * (unsigned long)global_id;
+    unsigned long end = start+blockstride;
+    
     // make sure we stay inside array bounds
-    end = min(end, length);
+    end = min(end, (unsigned long)length);
     
     float acc = -INFINITY;
     
-    for(uint i = start; i < end; i += stride) {
+    for(unsigned long i = start; i < end; i += stride) {
         acc = fmax(acc, values[i]);
     }
     

@@ -102,7 +102,7 @@ void SWE_DimensionalSplittingOpenCL::printProfilingInformation()
     }
 }
  
-void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent, cl::Event *event) {
+void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, size_t length, cl::Event *waitEvent, cl::Event *event) {
     cl::Kernel *k;
     
     // List of events a kernel has to wait for
@@ -116,21 +116,23 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
     if(device.getInfo<CL_DEVICE_TYPE>() == CL_DEVICE_TYPE_CPU) {
         // Use CPU optimized kernel
         k = &(kernels["reduceMaximumCPU"]);
-        unsigned int stride = 1;
-        unsigned int block = std::min(std::max(length/1024, (unsigned int)16), (unsigned int)8192);
-        unsigned int items = (unsigned int)ceil((float)length/(float)(block*stride));
+        size_t stride = 1;
+        size_t block = std::min(std::max((size_t)length/1024, (size_t)16), (size_t)8192);
+        size_t items = (size_t)ceil((float)length/(float)(block*stride));
         
         while(items > 1) {
+            // avoid stride overflow
+            stride = std::min(stride, length);
             try {
                 k->setArg(0, buffer);
-                k->setArg(1, length);
-                k->setArg(2, block);
-                k->setArg(3, stride);
+                k->setArg(1, (cl_uint)length);
+                k->setArg(2, (cl_uint)block);
+                k->setArg(3, (cl_uint)stride);
             } catch(cl::Error &e) {
                 handleError(e, "Unable to set reduceMaximumCPU kernel arguments");
             }
             
-            items = (unsigned int)ceil((float)length/(float)(block*stride));
+            items = (size_t)ceil((float)length/(float)(block*stride));
             
             cl::Event *e;
             cl::Event localEvent;
@@ -154,27 +156,29 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
     } else {
         // Use GPU optimized kernel
         k = &(kernels["reduceMaximum"]);
-        unsigned int stride = 1;
+        size_t stride = 1;
         // get optimal work group size
-        unsigned int workGroup = k->getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+        size_t workGroup = k->getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
         assert(workGroup > 1);
         
-        unsigned int groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
-        unsigned int globalSize = workGroup*groupCount;
+        size_t groupCount = (size_t)ceil((float)length/(float)(workGroup*stride));
+        size_t globalSize = workGroup*groupCount;
         
         assert(groupCount > 1);
         
         while(groupCount > 1) {
+            // avoid stride overflow
+            stride = std::min(stride, length);
             try {
                 k->setArg(0, buffer);
-                k->setArg(1, length);
-                k->setArg(2, stride);
+                k->setArg(1, (cl_uint)length);
+                k->setArg(2, (cl_uint)stride);
                 k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
             } catch(cl::Error &e) {
                 handleError(e, "Unable to set reduceMaximum kernel arguments");
             }
             
-            groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
+            groupCount = (size_t)ceil((float)length/(float)(workGroup*stride));
             globalSize = workGroup*groupCount;
             
             cl::Event *e;

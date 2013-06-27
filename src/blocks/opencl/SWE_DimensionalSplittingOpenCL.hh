@@ -59,7 +59,7 @@ protected:
      */
     void reduceMaximum(cl::CommandQueue &queue,
                         cl::Buffer &buffer,
-                        unsigned int length,
+                        size_t length,
                         cl::Event *waitEvent = NULL,
                         cl::Event *event = NULL);
    

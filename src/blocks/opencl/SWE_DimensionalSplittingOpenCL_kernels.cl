@@ -435,11 +435,12 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     // GLOBAL 
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
-    size_t rows = get_global_size(1);
+    size_t edges = get_global_size(1)+1;
+    size_t rows = edges+1;
     
-    size_t cellId = colMajor(x, y+1, rows+2);
-    size_t leftId = colMajor(x, y, rows+1); // [x][y]
-    size_t rightId = colMajor(x, y+1, rows+1); // [x][y+1]
+    size_t cellId = colMajor(x, y+1, rows);
+    size_t leftId = colMajor(x, y, edges);
+    size_t rightId = colMajor(x, y+1, edges);
     
     // update heights
     h[cellId] -= dt_dy * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
@@ -450,22 +451,25 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     h[cellId] = fmax(h[cellId], 0.f);
 #else
     // LOCAL
-    uint id = get_local_id(1);
-    uint gid = get_group_id(1);
-    uint localsize = get_local_size(1);
-    uint varOffset = 1 + gid*localsize + get_group_id(0)*(edges+1); // skip first row (ghost)
-    uint updLeftOffset = gid*localsize + get_group_id(0)*edges;
-    uint updRightOffset = updLeftOffset + 1;
+    size_t id = get_local_id(1);
+    size_t gid = get_group_id(1);
+    size_t localsize = get_local_size(1);
+    size_t start = gid*localsize;
     
-    uint num = min(localsize, edges-1-(gid*localsize));
+    size_t cellOffset = colMajor(get_group_id(0), start+1, edges+1); // skip ghost column
+    size_t leftOffset = colMajor(get_group_id(0), start, edges);
+    size_t rightOffset = leftOffset+1;
+    
+    size_t num = min(localsize, edges-1-start);
     
     event_t event[6];
-    event[0] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+updRightOffset, num, 0);
-    event[1] = async_work_group_copy(hNetUpdatesRightScratch, hNetUpdatesRight+updLeftOffset, num, 0);
-    event[2] = async_work_group_copy(hvNetUpdatesLeftScratch, hvNetUpdatesLeft+updRightOffset, num, 0);
-    event[3] = async_work_group_copy(hvNetUpdatesRightScratch, hvNetUpdatesRight+updLeftOffset, num, 0);
-    event[4] = async_work_group_copy(hScratch, h+varOffset, num, 0);
-    event[5] = async_work_group_copy(hvScratch, hv+varOffset, num, 0);
+    event[0] = async_work_group_copy(hScratch, h+cellOffset, num, 0);
+    event[1] = async_work_group_copy(hvScratch, hv+cellOffset, num, 0);
+    event[2] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, 0);
+    event[3] = async_work_group_copy(hNetUpdatesRightScratch, hNetUpdatesRight+leftOffset, num, 0);
+    event[4] = async_work_group_copy(hvNetUpdatesLeftScratch, hvNetUpdatesLeft+rightOffset, num, 0);
+    event[5] = async_work_group_copy(hvNetUpdatesRightScratch, hvNetUpdatesRight+leftOffset, num, 0);
+    
     wait_group_events(6, event);
     
     // make sure we stay inside bounds
@@ -482,8 +486,8 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     // make sure all operations on local memory have finished
     barrier(CLK_LOCAL_MEM_FENCE);
     
-    event[0] = async_work_group_copy(h+varOffset, hScratch,  num, 0);
-    event[1] = async_work_group_copy(hv+varOffset, hvScratch, num, 0);
+    event[0] = async_work_group_copy(h+cellOffset, hScratch,  num, 0);
+    event[1] = async_work_group_copy(hv+cellOffset, hvScratch, num, 0);
     wait_group_events(2, event);
 #endif
 }

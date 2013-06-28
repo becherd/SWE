@@ -474,7 +474,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             int y = 4;
             
             int srcCount = x*y;
-            int updCount = (x-1)*y;
+            int updCount = srcCount;
             
             // Note that all values are stored in column major order (as in Float2D)
             float h[] = {
@@ -492,30 +492,30 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
             
             float hNetUpdateLeft[] = {
-                20.7145, -12.7347, 15.6573,
-                -7.61185, 22.0812, -2.61581,
-                -7.19785, 20.3989, -9.77995,
-                1.98091, -0.456578, -15.5039
+                20.7145, -12.7347, 15.6573, -INFINITY,
+                -7.61185, 22.0812, -2.61581, -INFINITY,
+                -7.19785, 20.3989, -9.77995, -INFINITY,
+                1.98091, -0.456578, -15.5039, -INFINITY
             };
             
             float hNetUpdateRight[] = {
-                -20.7145, 12.7347, -15.6573,
-                7.61185, -22.0812, 2.61581,
-                7.19785, -20.3989, 9.77995,
-                -1.98091, 0.456578, 15.5039 
+                -20.7145, 12.7347, -15.6573, -INFINITY,
+                7.61185, -22.0812, 2.61581, -INFINITY,
+                7.19785, -20.3989, 9.77995, -INFINITY,
+                -1.98091, 0.456578, 15.5039, -INFINITY
             };
             
             float huNetUpdateLeft[] = {
-                -238.383, 141.019, -175.109,
-                77.2538, -207.481, 22.8083, 
-                79.7063, -219.008, 95.6475, 
-                -19.62, 4.16926, 145.679
+                -238.383, 141.019, -175.109, -INFINITY,
+                77.2538, -207.481, 22.8083, -INFINITY,
+                79.7063, -219.008, 95.6475, -INFINITY,
+                -19.62, 4.16926, 145.679, -INFINITY,
             };
             float huNetUpdateRight[] = {
-                -238.383, 141.019, -175.109, 
-                77.2538, -207.481, 22.8083,
-                79.7063, -219.008, 95.6475, 
-                -19.62, 4.16926, 145.679 
+                -238.383, 141.019, -175.109, -INFINITY,
+                77.2538, -207.481, 22.8083, -INFINITY,
+                79.7063, -219.008, 95.6475, -INFINITY,
+                -19.62, 4.16926, 145.679, -INFINITY
             };
             
             // -INFINITY implies "don't care"

@@ -343,10 +343,11 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
+    size_t cols = get_global_size(0)+2;
     
     size_t cellId = colMajor(x+1, y, rows);
-    size_t leftId = rowMajor(x, y, get_global_size(0)+1);
-    size_t rightId = rowMajor(x+1, y, get_global_size(0)+1);
+    size_t leftId = rowMajor(x, y, cols);
+    size_t rightId = rowMajor(x+1, y, cols);
     
     // update heights
     h[cellId] -= dt_dx * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
@@ -357,14 +358,17 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     h[cellId] = fmax(h[cellId], 0.f);
 #else
     // LOCAL
-    uint id = get_local_id(0);
-    uint gid = get_group_id(0);
-    uint localsize = get_local_size(0);
-    uint cellOffset = (gid*localsize + 1)*rows + get_group_id(1); // skip ghost column
-    uint leftOffset = gid * localsize + get_group_id(1) * (edges+1);
-    uint rightOffset = leftOffset+1;
+    size_t id = get_local_id(0);
+    size_t gid = get_group_id(0);
+    size_t localsize = get_local_size(0);
+    size_t start = gid*localsize;
+    size_t cols = edges+2;
     
-    uint num = min(localsize, edges-(gid*localsize));
+    size_t cellOffset = colMajor(start+1, get_group_id(1), rows); // skip ghost column
+    size_t leftOffset = rowMajor(start, get_group_id(1), cols);
+    size_t rightOffset = leftOffset+1;
+    
+    size_t num = min(localsize, edges-start);
     
     event_t event[6];
     event[0] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, 0);

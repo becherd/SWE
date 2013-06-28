@@ -20,6 +20,28 @@ inline size_t rowMajor(size_t x, size_t y, size_t cols)
     return (y * cols) + x;
 }
 
+/// Kernel to reduce the maximum value of an array in local memory
+/**
+ * After return of the function, the result can be read from the first
+ * array element.
+ * Note that ALL local memory operations on the array values must have
+ * finished before calling this function -> use local memory fence.
+ *
+ * @param values The array values in local memory
+ * @param length The array length (length MUST BE a power of two)
+ * @param local_id Local ID of current work item
+ */
+void localReduceMaximum(__local float* values, unsigned int length, unsigned int local_id)
+{
+    for(unsigned int i = 2; i <= length; i <<= 1) {
+        // Fast modulo operation (for i being a power of two)
+        if((local_id & (i-1)) == 0) {
+            values[local_id] = fmax(values[ local_id ], values[ local_id + (i>>1) ]);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+}
+
 /// Compute net updates (X-Sweep)
 /**
  * Kernel Range should be set to (#cols-1, #rows)
@@ -128,13 +150,22 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     event[3] = async_work_group_copy(huNetUpdatesRight+offset, huNetUpdatesRightScratch, num, 0);
     
     // Reduce maximum
-    // TODO: reduce maximum in local memory
-    // maxWaveSpeed[gid] = maxWave;
+#ifdef LOCAL_REDUCE
+    // fill buffer with neutral element -INFINITY to a length of a power of two
+    if(id >= num)
+        maxWaveSpeedScratch[id] = -INFINITY;
+    // reduce maximum locally
+    localReduceMaximum(maxWaveSpeedScratch, localsize, id);
+    // Store maximum of group
+    if(id == 0)
+        maxWaveSpeed[rowMajor(gid, get_group_id(1), get_num_groups(0))] = maxWaveSpeedScratch[0];
+#else
     event_t waveEvent = async_work_group_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, 0);
+    wait_group_events(1, &waveEvent);
+#endif
     
     // Wait for async transfers
     wait_group_events(4, event);
-    wait_group_events(1, &waveEvent); // TODO: remove this
 #endif
 }
 
@@ -244,13 +275,23 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     event[3] = async_work_group_copy(hvNetUpdatesRight+offset, hvNetUpdatesRightScratch, num, 0);
 
     // Reduce maximum
-    // TODO: reduce maximum in local memory
-    // maxWaveSpeed[gid] = maxWave;
+#ifdef DEBUG
+#ifdef LOCAL_REDUCE
+    // fill buffer with neutral element -INFINITY to a length of a power of two
+    if(id >= num)
+        maxWaveSpeedScratch[id] = -INFINITY;
+    // reduce maximum locally
+    localReduceMaximum(maxWaveSpeedScratch, localsize, id);
+    // Store maximum of group
+    if(id == 0)
+        maxWaveSpeed[rowMajor(get_group_id(0), gid, get_num_groups(0))] = maxWaveSpeedScratch[0];
+#else
     event_t waveEvent = async_work_group_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, 0);
-
+    wait_group_events(1, &waveEvent);
+#endif
+#endif
     // Wait for async transfers
     wait_group_events(4, event);
-    wait_group_events(1, &waveEvent); // TODO: remove this
 #endif
 }
 
@@ -465,13 +506,7 @@ __kernel void reduceMaximum(
     }
     
     barrier(CLK_LOCAL_MEM_FENCE);
-    for(unsigned int i = 2; i <= get_local_size(0); i <<= 1) {
-        // Fast modulo operation (for i being a power of two)
-        if((local_id & (i-1)) == 0) {
-            scratch[local_id] = fmax(scratch[ local_id ], scratch[ local_id + (i>>1) ]);
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
+    localReduceMaximum(scratch, get_local_size(0), local_id);
     
     if(local_id == 0) {
         values[source_id] = scratch[0];

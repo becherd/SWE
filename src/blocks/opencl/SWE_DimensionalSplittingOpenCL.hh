@@ -49,6 +49,9 @@ protected:
     //! The kernel memory type to be used
     KernelType kernelType;
     
+    //! The kernel type used for reductions (e.g. maxWaveSpeed reduction)
+    KernelType kernelReduceType;
+    
     /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
     /**
      * @param queue The command queue to perform the reduction on

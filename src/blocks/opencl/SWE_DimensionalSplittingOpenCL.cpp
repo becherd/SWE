@@ -24,12 +24,30 @@ SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_n
     cl::Program::Sources kernelSources;
     getKernelSources(kernelSources);
     
-    std::string options;
+    std::string memOpts, reduceOpts;
     if(kernelType == MEM_GLOBAL) {
-        options = std::string("-D MEM_GLOBAL");
+        memOpts = std::string("-D MEM_GLOBAL ");
     } else if(kernelType == MEM_LOCAL) {
-        options = std::string("-D MEM_LOCAL");
+        memOpts = std::string("-D MEM_LOCAL ");
     }
+    
+    if(devices[0].getInfo<CL_DEVICE_TYPE>() != CL_DEVICE_TYPE_CPU && kernelType == MEM_LOCAL) {
+        // reduce locally
+        kernelReduceType = MEM_LOCAL;
+        reduceOpts = std::string("-D LOCAL_REDUCE ");
+    } else {
+        // reduce globally
+        kernelReduceType = MEM_GLOBAL;
+        reduceOpts = std::string("-D GLOBAL_REDUCE ");
+    }
+    
+#ifdef NDEBUG
+    std::string debugOpts = std::string(" ");
+#else
+    std::string debugOpts = std::string("-D DEBUG ");
+#endif
+    
+    std::string options = memOpts + debugOpts + reduceOpts;
     
     buildProgram(kernelSources, options);
     
@@ -73,12 +91,20 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
         }
     }
     
-    std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices with ";
+    std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices." << std::endl;
+    
+    std::cout << "Using ";
     if(kernelType == MEM_GLOBAL) std::cout << "global";
     else std::cout << "local";
     std::cout << " memory." << std::endl;
+    
+    std::cout << "Using ";
+    if(kernelReduceType == MEM_GLOBAL) std::cout << "global";
+    else std::cout << "local";
+    std::cout << " maximum reduction." << std::endl;
+    
     if(kernelType == MEM_LOCAL)
-        std::cout << "Maximum work group size " << workGroupSize << std::endl;
+        std::cout << "Maximum work group size: " << workGroupSize << std::endl;
     std::cout << std::endl;
 }
 
@@ -120,11 +146,11 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
         k = &(kernels["reduceMaximumCPU"]);
         size_t stride = 1;
         size_t block = std::min(std::max((size_t)length/1024, (size_t)16), (size_t)8192);
-        size_t items = (size_t)ceil((float)length/(float)(block*stride));
+        size_t items;
         
-        while(items > 1) {
-            // avoid stride overflow
-            stride = std::min(stride, length);
+        do {
+            items = (size_t)ceil((float)length/(float)(block*stride));
+            
             try {
                 k->setArg(0, buffer);
                 k->setArg(1, (cl_uint)length);
@@ -134,14 +160,8 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
                 handleError(e, "Unable to set reduceMaximumCPU kernel arguments");
             }
             
-            items = (size_t)ceil((float)length/(float)(block*stride));
-            
-            cl::Event *e;
             cl::Event localEvent;
-            if(items > 1)
-                e = &localEvent;
-            else
-                e = event;    
+            cl::Event *e = (items > 1) ? &localEvent : event;
             try {
                 queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);  
                 addProfilingEvent(*e, "reduceMaximumCPU");
@@ -154,7 +174,9 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             }
             
             stride *= block;
-        }
+            // avoid stride overflow
+            stride = std::min(stride, length);
+        } while(items > 1);
     } else {
         // Use GPU optimized kernel
         k = &(kernels["reduceMaximum"]);
@@ -163,14 +185,9 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
         size_t workGroup = getKernelGroupSize(*k, device);
         assert(workGroup > 1);
         
-        size_t groupCount = (size_t)ceil((float)length/(float)(workGroup*stride));
-        size_t globalSize = workGroup*groupCount;
+        size_t groupCount, globalSize;
         
-        assert(groupCount > 1);
-        
-        while(groupCount > 1) {
-            // avoid stride overflow
-            stride = std::min(stride, length);
+        do {
             try {
                 k->setArg(0, buffer);
                 k->setArg(1, (cl_uint)length);
@@ -179,16 +196,12 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             } catch(cl::Error &e) {
                 handleError(e, "Unable to set reduceMaximum kernel arguments");
             }
-            
             groupCount = (size_t)ceil((float)length/(float)(workGroup*stride));
             globalSize = workGroup*groupCount;
             
-            cl::Event *e;
+            
             cl::Event localEvent;
-            if(groupCount > 1)
-                e = &localEvent;
-            else
-                e = event;
+            cl::Event *e = (groupCount > 1) ? &localEvent : event;
             try {
                 queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);                
                 addProfilingEvent(*e, "reduceMaximum");
@@ -201,7 +214,9 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             }
             
             stride *= workGroup;
-        }
+            // avoid stride overflow
+            stride = std::min(stride, length);
+        } while(groupCount > 1);
     }
     
     queue.flush();
@@ -496,11 +511,12 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             length = bufferChunks[i].second;
             
-            size_t groupSize;
+            size_t groupSize, globalSize;
             cl::NDRange globalRange, localRange;
             if(kernelType == MEM_LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
-                globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
+                globalSize = getKernelRange(groupSize, length-1);
+                globalRange = cl::NDRange(globalSize, y);
                 localRange = cl::NDRange(groupSize, 1);
             } else {
                 globalRange = cl::NDRange(length-1, y);
@@ -533,7 +549,15 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             // reduce waveSpeed Maximum
             cl::Event maximumEvent;
-            reduceMaximum(queues[i], waveSpeeds[i], (length-1) * y, &sweepEvent, &maximumEvent);
+            size_t maxWaveSpeedLength;
+            if(kernelReduceType == MEM_LOCAL) {
+                // local reduction
+                maxWaveSpeedLength = y * globalSize/groupSize;
+            } else {
+                // global reduction
+                maxWaveSpeedLength = (length-1) * y;
+            }
+            reduceMaximum(queues[i], waveSpeeds[i], maxWaveSpeedLength, &sweepEvent, &maximumEvent);
             waitList.push_back(maximumEvent);
         }
         
@@ -546,7 +570,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             float result;
             cl::Event e;
             queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result, NULL, &e);
-            addProfilingEvent(e, "read maxWaveSpeed");
+            addProfilingEvent(e, "read maxWaveSpeed (X)");
             maxWaveSpeed = std::max(maxWaveSpeed, result);
         }
         
@@ -645,11 +669,12 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             if(i == useDevices-1)
                 length--;
             
-            size_t groupSize;
+            size_t groupSize, globalSize;
             cl::NDRange globalRange, localRange;
             if(kernelType == MEM_LOCAL) {
                 groupSize = getKernelGroupSize(*k, devices[i]);
-                globalRange = cl::NDRange(length, getKernelRange(groupSize, y-1));
+                globalSize = getKernelRange(groupSize, y-1);
+                globalRange = cl::NDRange(length, globalSize);
                 localRange = cl::NDRange(1, groupSize);                
             } else {
                 globalRange = cl::NDRange(length, y-1);
@@ -682,7 +707,46 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             addProfilingEvent(e, "Y-Sweep");
             deviceWaitList[i].clear();
             deviceWaitList[i].push_back(e);
+            
+#ifndef NDEBUG
+            // reduce waveSpeed Maximum
+            cl::Event maximumEvent;
+            size_t maxWaveSpeedLength;
+            if(kernelReduceType == MEM_LOCAL) {
+                // local reduction
+                maxWaveSpeedLength = length * globalSize/groupSize;
+            } else {
+                // global reduction
+                maxWaveSpeedLength = length * (y-1);
+            }
+            reduceMaximum(queues[i], waveSpeeds[i], maxWaveSpeedLength, &e, &maximumEvent);
+            waitList.push_back(maximumEvent);
+#endif
         }
+        
+#ifndef NDEBUG
+        cl::Event::waitForEvents(waitList);
+        waitList.clear();
+        // Read maximum
+        float maxWaveSpeedY = -INFINITY;
+        for(unsigned int i = 0; i < useDevices; i++) {
+            float result;
+            cl::Event e;
+            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result, &waitList, &e);
+            addProfilingEvent(e, "read maxWaveSpeed (Y)");
+            maxWaveSpeedY = std::max(maxWaveSpeedY, result);
+        }
+        
+        // Check CFL condition
+        float maxTimestepY = .5f * dy / maxWaveSpeed;
+        if(maxTimestepY >= maxTimestep) {
+            // OK, everything's fine
+        } else {
+            // Oops, CFL condition is NOT satisfied
+            std::cerr << "WARNING: CFL condition is not satisfied in y-sweep: "
+                      << maxTimestepY << " < " << maxTimestep << std::endl;
+        }
+#endif
 
         // enqueue netUpdate Kernel (Y-Sweep)
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);

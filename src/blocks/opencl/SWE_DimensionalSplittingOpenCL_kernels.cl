@@ -243,11 +243,12 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     );
 #else
     // LOCAL
-    uint localsize = get_local_size(1);
-    uint gid = get_group_id(1);
-    uint offset = get_group_id(0)*(edges+1) + gid * localsize;
+    size_t localsize = get_local_size(1);
+    size_t gid = get_group_id(1);
+    size_t start = gid*localsize;
+    size_t offset = colMajor(get_group_id(0), start, edges+1);
     // Number of floats to load (make sure we stay in bounds)
-    uint num = min(localsize, edges-(gid * localsize)) + 1;
+    size_t num = min(localsize, edges-start) + 1;
 
     event_t event[4];
     // local dst, global src, num floats
@@ -275,7 +276,7 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
 
     // write local memory back to global memory
     num--; // we're writing one update less than number of cells
-    offset = get_group_id(0)*edges + gid * localsize;
+    offset = colMajor(get_group_id(0), start, edges);
     event[0] = async_work_group_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, 0);
     event[1] = async_work_group_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, 0);
     event[2] = async_work_group_copy(hvNetUpdatesLeft+offset, hvNetUpdatesLeftScratch, num, 0);

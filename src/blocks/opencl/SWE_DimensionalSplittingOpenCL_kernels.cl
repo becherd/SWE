@@ -45,6 +45,11 @@ void localReduceMaximum(__local float* values, unsigned int length, unsigned int
 /// Compute net updates (X-Sweep)
 /**
  * Kernel Range should be set to (#cols-1, #rows)
+ *
+ * If maxWaveSpeed is reduced globally, the dimensions for maxWaveSpeeds
+ * are (cols-1)*rows (aka edges*rows). For net-updates, the dimensions are
+ * cols*rows (aka (edges+1)*rows) since we need to keep room for the net-updates
+ * at the edge that are copied from the "next" device.
  * 
  * @param h                             Pointer to global water heights memory
  * @param hu                            Pointer to global horizontal water momentums memory
@@ -98,23 +103,24 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     
     size_t leftId = colMajor(x, y, rows);
     size_t rightId = colMajor(x+1, y, rows);
-    size_t updateId = rowMajor(x, y, edges);
-    
+    size_t updateId = rowMajor(x, y, edges+1); // leave room for edge-update from next device
+    size_t waveId = rowMajor(x, y, edges); // leave room for edge-update from next device
     computeNetUpdates(
         h[leftId], h[rightId],
         hu[leftId], hu[rightId],
         b[leftId], b[rightId],
         &(hNetUpdatesLeft[updateId]), &(hNetUpdatesRight[updateId]),
         &(huNetUpdatesLeft[updateId]), &(huNetUpdatesRight[updateId]),
-        &(maxWaveSpeed[updateId])
+        &(maxWaveSpeed[waveId])
     );
 #else
     // LOCAL
-    uint localsize = get_local_size(0);
-    uint gid = get_group_id(0);
-    uint offset = gid * localsize * rows + get_group_id(1);
+    size_t localsize = get_local_size(0);
+    size_t gid = get_group_id(0);
+    size_t start = gid*localsize;
+    size_t offset = colMajor(start, get_group_id(1), rows);
     // Number of floats to load (make sure we stay in bounds)
-    uint num = min(localsize, edges-(gid * localsize)) + 1;
+    size_t num = min(localsize, edges-start) + 1;
     
     event_t event[4];
     // local dst, global src, num floats, stride
@@ -124,7 +130,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     // wait for memory
     wait_group_events(3, event);
     
-    uint id = get_local_id(0);
+    size_t id = get_local_id(0);
     
     if(id < num) {
         computeNetUpdates(
@@ -142,7 +148,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     
     // write local memory back to global memory
     num--; // we're writing one update less than number of cells
-    offset = gid * localsize + get_group_id(1) * edges;
+    offset = rowMajor(start, get_group_id(1), edges+1);
     
     event[0] = async_work_group_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, 0);
     event[1] = async_work_group_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, 0);
@@ -160,6 +166,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     if(id == 0)
         maxWaveSpeed[rowMajor(gid, get_group_id(1), get_num_groups(0))] = maxWaveSpeedScratch[0];
 #else
+    offset = rowMajor(start, get_group_id(1), edges);
     event_t waveEvent = async_work_group_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, 0);
     wait_group_events(1, &waveEvent);
 #endif

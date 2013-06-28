@@ -230,7 +230,7 @@ void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t d
     <pre>
     Updates       *-----*-----*--0--*-----*                                           
                                           *-----*-----*--1--*-----*             
-                                                                  *--2--*      
+                                                                  *--2--*-----*      
                                                                                
     Edges         0     1     2     3     4     5     6     7     8     9
             |     |     |     |     |     |     |     |     |     |     |     |
@@ -282,9 +282,6 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
         } catch(cl::Error &e) {
             handleError(e, "Unable to create variable buffers");
         }
-        
-        if(i == useDevices-1)
-            size -= colSize; // NetUpdates of last device is one column smaller
         
         // These buffers are named for Xsweep but will also be used in the Ysweep
         try {

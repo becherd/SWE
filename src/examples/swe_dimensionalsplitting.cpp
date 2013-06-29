@@ -250,11 +250,12 @@ int main( int argc, char** argv ) {
             if(!l_bathymetryFileName.empty() || !l_displacementFileName.empty())
                 std::cerr << "WARNING: Supplied bathymetry and displacement data will be ignored" << std::endl;
         }
-        
+#ifdef USEOPENCL
         if(l_maxGroupSize == 0 || (l_maxGroupSize & (l_maxGroupSize - 1))) {
             std::cout << "Group size must be greater than zero and a power of two!" << std::endl;
             showUsage = 1;
         }
+#endif
     }
     
     if(showUsage) {

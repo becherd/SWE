@@ -45,6 +45,11 @@ void localReduceMaximum(__local float* values, unsigned int length, unsigned int
 /// Compute net updates (X-Sweep)
 /**
  * Kernel Range should be set to (#cols-1, #rows)
+ *
+ * If maxWaveSpeed is reduced globally, the dimensions for maxWaveSpeeds
+ * are (cols-1)*rows (aka edges*rows). For net-updates, the dimensions are
+ * cols*rows (aka (edges+1)*rows) since we need to keep room for the net-updates
+ * at the edge that are copied from the "next" device.
  * 
  * @param h                             Pointer to global water heights memory
  * @param hu                            Pointer to global horizontal water momentums memory
@@ -98,23 +103,24 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     
     size_t leftId = colMajor(x, y, rows);
     size_t rightId = colMajor(x+1, y, rows);
-    size_t updateId = rowMajor(x, y, edges);
-    
+    size_t updateId = rowMajor(x, y, edges+1); // leave room for edge-update from next device
+    size_t waveId = rowMajor(x, y, edges); // leave room for edge-update from next device
     computeNetUpdates(
         h[leftId], h[rightId],
         hu[leftId], hu[rightId],
         b[leftId], b[rightId],
         &(hNetUpdatesLeft[updateId]), &(hNetUpdatesRight[updateId]),
         &(huNetUpdatesLeft[updateId]), &(huNetUpdatesRight[updateId]),
-        &(maxWaveSpeed[updateId])
+        &(maxWaveSpeed[waveId])
     );
 #else
     // LOCAL
-    uint localsize = get_local_size(0);
-    uint gid = get_group_id(0);
-    uint offset = gid * localsize * rows + get_group_id(1);
+    size_t localsize = get_local_size(0);
+    size_t gid = get_group_id(0);
+    size_t start = gid*localsize;
+    size_t offset = colMajor(start, get_group_id(1), rows);
     // Number of floats to load (make sure we stay in bounds)
-    uint num = min(localsize, edges-(gid * localsize)) + 1;
+    size_t num = min(localsize, edges-start) + 1;
     
     event_t event[4];
     // local dst, global src, num floats, stride
@@ -124,7 +130,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     // wait for memory
     wait_group_events(3, event);
     
-    uint id = get_local_id(0);
+    size_t id = get_local_id(0);
     
     if(id < num) {
         computeNetUpdates(
@@ -142,7 +148,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     
     // write local memory back to global memory
     num--; // we're writing one update less than number of cells
-    offset = gid * localsize + get_group_id(1) * edges;
+    offset = rowMajor(start, get_group_id(1), edges+1);
     
     event[0] = async_work_group_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, 0);
     event[1] = async_work_group_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, 0);
@@ -160,6 +166,7 @@ __kernel void dimensionalSplitting_XSweep_netUpdates(
     if(id == 0)
         maxWaveSpeed[rowMajor(gid, get_group_id(1), get_num_groups(0))] = maxWaveSpeedScratch[0];
 #else
+    offset = rowMajor(start, get_group_id(1), edges);
     event_t waveEvent = async_work_group_copy(maxWaveSpeed+offset, maxWaveSpeedScratch, num, 0);
     wait_group_events(1, &waveEvent);
 #endif
@@ -236,11 +243,12 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
     );
 #else
     // LOCAL
-    uint localsize = get_local_size(1);
-    uint gid = get_group_id(1);
-    uint offset = get_group_id(0)*(edges+1) + gid * localsize;
+    size_t localsize = get_local_size(1);
+    size_t gid = get_group_id(1);
+    size_t start = gid*localsize;
+    size_t offset = colMajor(get_group_id(0), start, edges+1);
     // Number of floats to load (make sure we stay in bounds)
-    uint num = min(localsize, edges-(gid * localsize)) + 1;
+    size_t num = min(localsize, edges-start) + 1;
 
     event_t event[4];
     // local dst, global src, num floats
@@ -268,7 +276,7 @@ __kernel void dimensionalSplitting_YSweep_netUpdates(
 
     // write local memory back to global memory
     num--; // we're writing one update less than number of cells
-    offset = get_group_id(0)*edges + gid * localsize;
+    offset = colMajor(get_group_id(0), start, edges);
     event[0] = async_work_group_copy(hNetUpdatesLeft+offset, hNetUpdatesLeftScratch, num, 0);
     event[1] = async_work_group_copy(hNetUpdatesRight+offset, hNetUpdatesRightScratch, num, 0);
     event[2] = async_work_group_copy(hvNetUpdatesLeft+offset, hvNetUpdatesLeftScratch, num, 0);
@@ -335,10 +343,11 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
+    size_t cols = get_global_size(0)+1;
     
     size_t cellId = colMajor(x+1, y, rows);
-    size_t leftId = rowMajor(x, y, get_global_size(0)+1);
-    size_t rightId = rowMajor(x+1, y, get_global_size(0)+1);
+    size_t leftId = rowMajor(x, y, cols);
+    size_t rightId = rowMajor(x+1, y, cols);
     
     // update heights
     h[cellId] -= dt_dx * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
@@ -349,14 +358,17 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     h[cellId] = fmax(h[cellId], 0.f);
 #else
     // LOCAL
-    uint id = get_local_id(0);
-    uint gid = get_group_id(0);
-    uint localsize = get_local_size(0);
-    uint cellOffset = (gid*localsize + 1)*rows + get_group_id(1); // skip ghost column
-    uint leftOffset = gid * localsize + get_group_id(1) * (edges+1);
-    uint rightOffset = leftOffset+1;
+    size_t id = get_local_id(0);
+    size_t gid = get_group_id(0);
+    size_t localsize = get_local_size(0);
+    size_t start = gid*localsize;
+    size_t cols = edges+1;
     
-    uint num = min(localsize, edges-(gid*localsize));
+    size_t cellOffset = colMajor(start+1, get_group_id(1), rows); // skip ghost column
+    size_t leftOffset = rowMajor(start, get_group_id(1), cols);
+    size_t rightOffset = leftOffset+1;
+    
+    size_t num = min(localsize, edges-start);
     
     event_t event[6];
     event[0] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, 0);
@@ -423,11 +435,12 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     // GLOBAL 
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
-    size_t rows = get_global_size(1);
+    size_t edges = get_global_size(1)+1;
+    size_t rows = edges+1;
     
-    size_t cellId = colMajor(x, y+1, rows+2);
-    size_t leftId = colMajor(x, y, rows+1); // [x][y]
-    size_t rightId = colMajor(x, y+1, rows+1); // [x][y+1]
+    size_t cellId = colMajor(x, y+1, rows);
+    size_t leftId = colMajor(x, y, edges);
+    size_t rightId = colMajor(x, y+1, edges);
     
     // update heights
     h[cellId] -= dt_dy * (hNetUpdatesRight[leftId] + hNetUpdatesLeft[rightId]);
@@ -438,22 +451,25 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     h[cellId] = fmax(h[cellId], 0.f);
 #else
     // LOCAL
-    uint id = get_local_id(1);
-    uint gid = get_group_id(1);
-    uint localsize = get_local_size(1);
-    uint varOffset = 1 + gid*localsize + get_group_id(0)*(edges+1); // skip first row (ghost)
-    uint updLeftOffset = gid*localsize + get_group_id(0)*edges;
-    uint updRightOffset = updLeftOffset + 1;
+    size_t id = get_local_id(1);
+    size_t gid = get_group_id(1);
+    size_t localsize = get_local_size(1);
+    size_t start = gid*localsize;
     
-    uint num = min(localsize, edges-1-(gid*localsize));
+    size_t cellOffset = colMajor(get_group_id(0), start+1, edges+1); // skip ghost column
+    size_t leftOffset = colMajor(get_group_id(0), start, edges);
+    size_t rightOffset = leftOffset+1;
+    
+    size_t num = min(localsize, edges-1-start);
     
     event_t event[6];
-    event[0] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+updRightOffset, num, 0);
-    event[1] = async_work_group_copy(hNetUpdatesRightScratch, hNetUpdatesRight+updLeftOffset, num, 0);
-    event[2] = async_work_group_copy(hvNetUpdatesLeftScratch, hvNetUpdatesLeft+updRightOffset, num, 0);
-    event[3] = async_work_group_copy(hvNetUpdatesRightScratch, hvNetUpdatesRight+updLeftOffset, num, 0);
-    event[4] = async_work_group_copy(hScratch, h+varOffset, num, 0);
-    event[5] = async_work_group_copy(hvScratch, hv+varOffset, num, 0);
+    event[0] = async_work_group_copy(hScratch, h+cellOffset, num, 0);
+    event[1] = async_work_group_copy(hvScratch, hv+cellOffset, num, 0);
+    event[2] = async_work_group_copy(hNetUpdatesLeftScratch, hNetUpdatesLeft+rightOffset, num, 0);
+    event[3] = async_work_group_copy(hNetUpdatesRightScratch, hNetUpdatesRight+leftOffset, num, 0);
+    event[4] = async_work_group_copy(hvNetUpdatesLeftScratch, hvNetUpdatesLeft+rightOffset, num, 0);
+    event[5] = async_work_group_copy(hvNetUpdatesRightScratch, hvNetUpdatesRight+leftOffset, num, 0);
+    
     wait_group_events(6, event);
     
     // make sure we stay inside bounds
@@ -470,8 +486,8 @@ __kernel void dimensionalSplitting_YSweep_updateUnknowns(
     // make sure all operations on local memory have finished
     barrier(CLK_LOCAL_MEM_FENCE);
     
-    event[0] = async_work_group_copy(h+varOffset, hScratch,  num, 0);
-    event[1] = async_work_group_copy(hv+varOffset, hvScratch, num, 0);
+    event[0] = async_work_group_copy(h+cellOffset, hScratch,  num, 0);
+    event[1] = async_work_group_copy(hv+cellOffset, hvScratch, num, 0);
     wait_group_events(2, event);
 #endif
 }
@@ -671,4 +687,38 @@ __kernel void setBottomTopBoundary(
     h[dstId] = h[srcId];
     hu[dstId] = hu[srcId];
     hv[dstId] = topSign*hv[srcId];
+}
+
+
+ 
+/// Write the left-most column of a buffer into a copy-column buffer that is transferred to another device
+/**
+ * Note that the source buffer is assumed to be in row-major order
+ * 
+ * @param source The source buffer
+ * @param copyBuffer The column buffer
+ * @param cols The number of columns of the source buffer
+ */
+__kernel void writeNetUpdatesEdgeCopy(__global float* source, __global float* copyBuffer, __const uint cols)
+{
+    size_t sourceId = rowMajor(0, get_global_id(0), (size_t)cols);
+    size_t destinationId = get_global_id(0);
+    
+    copyBuffer[destinationId] = source[sourceId];
+}
+
+/// read the right-most column from a copy-column buffer into a destination buffer
+/**
+ * Note that the destination buffer is assumed to be in row-major order
+ * 
+ * @param source The destination buffer
+ * @param copyBuffer The column buffer
+ * @param cols The number of columns of the destination buffer
+ */
+__kernel void readNetUpdatesEdgeCopy(__global float* destination, __global float* copyBuffer, __const uint cols)
+{
+    size_t sourceId = get_global_id(0);
+    size_t destinationId = rowMajor(cols-1, get_global_id(0), (size_t)cols);
+    
+    destination[destinationId] = copyBuffer[sourceId];
 }

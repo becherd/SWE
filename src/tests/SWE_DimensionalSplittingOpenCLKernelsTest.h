@@ -69,7 +69,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         }
         
         void _runSweep(const char* kernelName,
-            int sourceCount, int updateCount,
+            int sourceCount, int updateCount, int waveCount,
             int kernelRangeX, int kernelRangeY,
             unsigned int kernelDirection,
             float* h,
@@ -88,11 +88,11 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             cl::Buffer bBuf(wrapper->context, (CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR), sourceCount*sizeof(float), b);
             
             // net update and maxwave buffers
-            cl::Buffer hLeftBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
-            cl::Buffer hRightBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
-            cl::Buffer huLeftBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
-            cl::Buffer huRightBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
-            cl::Buffer maxWaveBuf(wrapper->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer hLeftBuf(wrapper->context, CL_MEM_READ_WRITE, updateCount*sizeof(float));
+            cl::Buffer hRightBuf(wrapper->context, CL_MEM_READ_WRITE, updateCount*sizeof(float));
+            cl::Buffer huLeftBuf(wrapper->context, CL_MEM_READ_WRITE, updateCount*sizeof(float));
+            cl::Buffer huRightBuf(wrapper->context, CL_MEM_READ_WRITE, updateCount*sizeof(float));
+            cl::Buffer maxWaveBuf(wrapper->context, CL_MEM_READ_WRITE, waveCount*sizeof(float));
             
             cl::Kernel *k = &(wrapper->kernels[kernelName]);
             k->setArg(0, hBuf);
@@ -109,21 +109,27 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             
             float   hNetUpdateLeft[updateCount], hNetUpdateRight[updateCount],
                     huNetUpdateLeft[updateCount], huNetUpdateRight[updateCount],
-                    maxWaveSpeed[updateCount];
+                    maxWaveSpeed[waveCount];
             
             wrapper->queues[0].enqueueReadBuffer(hLeftBuf, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateLeft);
             wrapper->queues[0].enqueueReadBuffer(hRightBuf, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateRight);
             wrapper->queues[0].enqueueReadBuffer(huLeftBuf, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateLeft);
             wrapper->queues[0].enqueueReadBuffer(huRightBuf, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateRight);
-            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_TRUE, 0, updateCount*sizeof(float), &maxWaveSpeed);
+            wrapper->queues[0].enqueueReadBuffer(maxWaveBuf, CL_TRUE, 0, waveCount*sizeof(float), &maxWaveSpeed);
             
             float delta = 1e-3;
             
             for(int i = 0; i < updateCount; i++) {
-                TSM_ASSERT_DELTA("[global] h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
-                TSM_ASSERT_DELTA("[global] h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
-                TSM_ASSERT_DELTA("[global] hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
-                TSM_ASSERT_DELTA("[global] hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+                if(expectedHNetUpdateLeft[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[global] h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
+                if(expectedHNetUpdateRight[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[global] h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
+                if(expectedHuNetUpdateLeft[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[global] hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
+                if(expectedHuNetUpdateRight[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[global] hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+            }
+            for(int i = 0; i < waveCount; i++) {
                 TSM_ASSERT_DELTA("[global] max wave speed", maxWaveSpeed[i], expectedMaxWaveSpeed[i], delta);
             }
             
@@ -140,7 +146,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             cl::Buffer hRightBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
             cl::Buffer huLeftBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
             cl::Buffer huRightBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
-            cl::Buffer maxWaveBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, updateCount*sizeof(float));
+            cl::Buffer maxWaveBufLocal(wrapperLocal->context, CL_MEM_WRITE_ONLY, waveCount*sizeof(float));
             
             k = &(wrapperLocal->kernels[kernelName]);
             size_t groupSize = wrapperLocal->getKernelGroupSize(*k, wrapperLocal->devices[0]);
@@ -180,13 +186,19 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             wrapperLocal->queues[0].enqueueReadBuffer(hRightBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &hNetUpdateRight);
             wrapperLocal->queues[0].enqueueReadBuffer(huLeftBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateLeft);
             wrapperLocal->queues[0].enqueueReadBuffer(huRightBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &huNetUpdateRight);
-            wrapperLocal->queues[0].enqueueReadBuffer(maxWaveBufLocal, CL_TRUE, 0, updateCount*sizeof(float), &maxWaveSpeed);
+            wrapperLocal->queues[0].enqueueReadBuffer(maxWaveBufLocal, CL_TRUE, 0, waveCount*sizeof(float), &maxWaveSpeed);
             
             for(int i = 0; i < updateCount; i++) {
-                TSM_ASSERT_DELTA("[local] h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
-                TSM_ASSERT_DELTA("[local] h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
-                TSM_ASSERT_DELTA("[local] hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
-                TSM_ASSERT_DELTA("[local] hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+                if(expectedHNetUpdateLeft[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[local] h net update left", hNetUpdateLeft[i], expectedHNetUpdateLeft[i], delta);
+                if(expectedHNetUpdateRight[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[local] h net update right", hNetUpdateRight[i], expectedHNetUpdateRight[i], delta);
+                if(expectedHuNetUpdateLeft[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[local] hu net update left", huNetUpdateLeft[i], expectedHuNetUpdateLeft[i], delta);
+                if(expectedHuNetUpdateRight[i] != -INFINITY)
+                    TSM_ASSERT_DELTA("[local] hu net update right", huNetUpdateRight[i], expectedHuNetUpdateRight[i], delta);
+            }
+            for(int i = 0; i < waveCount; i++) {
                 TSM_ASSERT_DELTA("[local] max wave speed", maxWaveSpeed[i], expectedMaxWaveSpeed[i], delta);
             }
         }
@@ -325,7 +337,8 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             int y = 4;
     
             int srcCount = x*y;
-            int updCount = (x-1)*y;
+            int updCount = srcCount;
+            int waveCount = (x-1)*y;
             
             // Note that all values are stored in column major order (as in Float2D)
             float h[] = {
@@ -350,40 +363,40 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
             
             float expectedHNetUpdateLeft[] = {
-                20.7145, -12.7347, 15.6573,
-                -7.61185, 22.0812, -2.61581,
-                -7.19785, 20.3989, -9.77995,
-                1.98091, -0.456578, -15.5039
+                20.7145, -12.7347, 15.6573, -INFINITY,
+                -7.61185, 22.0812, -2.61581, -INFINITY,
+                -7.19785, 20.3989, -9.77995, -INFINITY,
+                1.98091, -0.456578, -15.5039, -INFINITY
             };
             
             float expectedHNetUpdateRight[] = {
-                -20.7145, 12.7347, -15.6573,
-                7.61185, -22.0812, 2.61581,
-                7.19785, -20.3989, 9.77995,
-                -1.98091, 0.456578, 15.5039 
+                -20.7145, 12.7347, -15.6573, -INFINITY,
+                7.61185, -22.0812, 2.61581, -INFINITY,
+                7.19785, -20.3989, 9.77995, -INFINITY,
+                -1.98091, 0.456578, 15.5039, -INFINITY
             };
             
             float expectedHuNetUpdateLeft[] = {
-                -238.383, 141.019, -175.109,
-                77.2538, -207.481, 22.8083, 
-                79.7063, -219.008, 95.6475, 
-                -19.62, 4.16926, 145.679
+                -238.383, 141.019, -175.109, -INFINITY,
+                77.2538, -207.481, 22.8083, -INFINITY,
+                79.7063, -219.008, 95.6475, -INFINITY,
+                -19.62, 4.16926, 145.679, -INFINITY,
             };
             float expectedHuNetUpdateRight[] = {
-                -238.383, 141.019, -175.109, 
-                77.2538, -207.481, 22.8083,
-                79.7063, -219.008, 95.6475, 
-                -19.62, 4.16926, 145.679 
+                -238.383, 141.019, -175.109, -INFINITY,
+                77.2538, -207.481, 22.8083, -INFINITY,
+                79.7063, -219.008, 95.6475, -INFINITY,
+                -19.62, 4.16926, 145.679, -INFINITY
             };
             float expectedMaxWaveSpeed[] = {
-                11.508, 11.0736, 11.1838, 
-                10.1491, 9.39628, 8.71938, 
+                11.508, 11.0736, 11.1838,
+                10.1491, 9.39628, 8.71938,
                 11.0736, 10.7363, 9.77995,
                 9.90454, 9.13154, 9.39628
             };
     
             _runSweep(  "dimensionalSplitting_XSweep_netUpdates",
-                        srcCount, updCount, x-1, y, DIR_X,
+                        srcCount, updCount, waveCount, x-1, y, DIR_X,
                         h, hu, b,
                         expectedHNetUpdateLeft, expectedHNetUpdateRight,
                         expectedHuNetUpdateLeft, expectedHuNetUpdateRight,
@@ -397,6 +410,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
     
             int srcCount = x*y;
             int updCount = x*(y-1);
+            int waveCount = updCount;
             
             // Note that all values are stored in column major order (as in Float2D)
             float h[] = {
@@ -447,7 +461,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
     
             _runSweep(  "dimensionalSplitting_YSweep_netUpdates",
-                        srcCount, updCount, x, y-1, DIR_Y,
+                        srcCount, updCount, waveCount, x, y-1, DIR_Y,
                         h, hu, b,
                         expectedHNetUpdateLeft, expectedHNetUpdateRight,
                         expectedHuNetUpdateLeft, expectedHuNetUpdateRight,
@@ -460,7 +474,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             int y = 4;
             
             int srcCount = x*y;
-            int updCount = (x-1)*y;
+            int updCount = srcCount;
             
             // Note that all values are stored in column major order (as in Float2D)
             float h[] = {
@@ -478,30 +492,30 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             };
             
             float hNetUpdateLeft[] = {
-                20.7145, -12.7347, 15.6573,
-                -7.61185, 22.0812, -2.61581,
-                -7.19785, 20.3989, -9.77995,
-                1.98091, -0.456578, -15.5039
+                20.7145, -12.7347, 15.6573, -INFINITY,
+                -7.61185, 22.0812, -2.61581, -INFINITY,
+                -7.19785, 20.3989, -9.77995, -INFINITY,
+                1.98091, -0.456578, -15.5039, -INFINITY
             };
             
             float hNetUpdateRight[] = {
-                -20.7145, 12.7347, -15.6573,
-                7.61185, -22.0812, 2.61581,
-                7.19785, -20.3989, 9.77995,
-                -1.98091, 0.456578, 15.5039 
+                -20.7145, 12.7347, -15.6573, -INFINITY,
+                7.61185, -22.0812, 2.61581, -INFINITY,
+                7.19785, -20.3989, 9.77995, -INFINITY,
+                -1.98091, 0.456578, 15.5039, -INFINITY
             };
             
             float huNetUpdateLeft[] = {
-                -238.383, 141.019, -175.109,
-                77.2538, -207.481, 22.8083, 
-                79.7063, -219.008, 95.6475, 
-                -19.62, 4.16926, 145.679
+                -238.383, 141.019, -175.109, -INFINITY,
+                77.2538, -207.481, 22.8083, -INFINITY,
+                79.7063, -219.008, 95.6475, -INFINITY,
+                -19.62, 4.16926, 145.679, -INFINITY,
             };
             float huNetUpdateRight[] = {
-                -238.383, 141.019, -175.109, 
-                77.2538, -207.481, 22.8083,
-                79.7063, -219.008, 95.6475, 
-                -19.62, 4.16926, 145.679 
+                -238.383, 141.019, -175.109, -INFINITY,
+                77.2538, -207.481, 22.8083, -INFINITY,
+                79.7063, -219.008, 95.6475, -INFINITY,
+                -19.62, 4.16926, 145.679, -INFINITY
             };
             
             // -INFINITY implies "don't care"
@@ -523,7 +537,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             float dt_dx = 0.5;
             
             _runUpdate( "dimensionalSplitting_XSweep_updateUnknowns",
-                    srcCount, updCount, x-2, y, DIR_X,
+                    srcCount, updCount, x-1, y, DIR_X,
                     dt_dx,
                     h, hu,
                     hNetUpdateLeft, hNetUpdateRight,
@@ -791,6 +805,80 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         
             for(unsigned int i = 0; i < groupCount; i++) {
                 TS_ASSERT_EQUALS(values2[workGroup*i], max[i]);
+            }
+        }
+        
+        void testWriteNetUpdatesEdgeCopy() {
+            unsigned int x = 5;
+            unsigned int y = 4;
+            unsigned int size = x*y;
+            float values[] = {
+                17, 10, 9, 16, 12,
+                2, 6, 7, 13, 15,
+                5, 3, 20, 4, 14,
+                18, 11, 19, 1, 8
+            };
+            
+            float expectedEdge[] = {17, 2, 5, 18};
+            float edge[y];
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(cl_float), values);
+            cl::Buffer edgeBuf(wrapper->context, CL_MEM_READ_WRITE, y*sizeof(cl_float));
+            
+            cl::Kernel *k = &(wrapper->kernels["writeNetUpdatesEdgeCopy"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, edgeBuf);
+            k->setArg(2, x);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(y), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(edgeBuf, CL_TRUE, 0, y*sizeof(cl_float), edge);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < y; i++) {
+                TS_ASSERT_EQUALS(edge[i], expectedEdge[i]);
+            }
+        }
+        
+        void testReadNetUpdatesEdgeCopy() {
+            unsigned int x = 6;
+            unsigned int y = 4;
+            unsigned int size = x*y;
+            float values[] = {
+                17, 12, 10, 9, 16, -1,
+                2, 6, 21, 7, 13, -2,
+                5, 3, 20, 26, 4, -3,
+                18, 11, 19, 7, 1, -4
+            };
+            
+            float expectedValues[] = {
+                17, 12, 10, 9, 16, 17,
+                2, 6, 21, 7, 13, 2,
+                5, 3, 20, 26, 4, 5,
+                18, 11, 19, 7, 1, 18
+            };
+            
+            float edge[] = {17, 2, 5, 18};
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(cl_float), values);
+            cl::Buffer edgeBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), y*sizeof(cl_float), edge);
+            
+            cl::Kernel *k = &(wrapper->kernels["readNetUpdatesEdgeCopy"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, edgeBuf);
+            k->setArg(2, x);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(y), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, size*sizeof(cl_float), values);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < size; i++) {
+                TS_ASSERT_EQUALS(values[i], expectedValues[i]);
             }
         }
 };

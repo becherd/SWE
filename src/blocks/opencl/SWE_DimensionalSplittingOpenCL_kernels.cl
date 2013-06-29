@@ -689,8 +689,6 @@ __kernel void setBottomTopBoundary(
     hv[dstId] = topSign*hv[srcId];
 }
 
-
- 
 /// Write the left-most column of a buffer into a copy-column buffer that is transferred to another device
 /**
  * Note that the source buffer is assumed to be in row-major order
@@ -719,6 +717,39 @@ __kernel void readNetUpdatesEdgeCopy(__global float* destination, __global float
 {
     size_t sourceId = get_global_id(0);
     size_t destinationId = rowMajor(cols-1, get_global_id(0), (size_t)cols);
+    
+    destination[destinationId] = copyBuffer[sourceId];
+}
+
+/// Write the right-most column of a buffer into a copy-column buffer that is transferred to another device
+/**
+ * Note that the source buffer is assumed to be in column-major order
+ * 
+ * @param source The source buffer
+ * @param copyBuffer The column buffer
+ * @param rows The number of rows of the source buffer
+ * @param cols The number of columns of the source buffer
+ */
+__kernel void writeVariableEdgeCopy(__global float* source, __global float* copyBuffer, __const uint rows, __const uint cols)
+{
+    size_t sourceId = colMajor(cols-1, get_global_id(0), (size_t)rows);
+    size_t destinationId = get_global_id(0);
+    
+    copyBuffer[destinationId] = source[sourceId];
+}
+
+/// read the left-most column from a copy-column buffer into a destination buffer
+/**
+ * Note that the destination buffer is assumed to be in column-major order
+ * 
+ * @param source The destination buffer
+ * @param copyBuffer The column buffer
+ * @param rows The number of rows of the destination buffer
+ */
+__kernel void readVariableEdgeCopy(__global float* destination, __global float* copyBuffer, __const uint rows)
+{
+    size_t sourceId = get_global_id(0);
+    size_t destinationId = colMajor(0, get_global_id(0), (size_t)rows);
     
     destination[destinationId] = copyBuffer[sourceId];
 }

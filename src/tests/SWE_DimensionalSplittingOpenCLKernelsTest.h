@@ -881,4 +881,85 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
                 TS_ASSERT_EQUALS(values[i], expectedValues[i]);
             }
         }
+        
+        void testWriteVariableEdgeCopy() {
+            unsigned int x = 5;
+            unsigned int y = 4;
+            unsigned int size = x*y;
+            float values[] = {
+                17, 10, 9, 16, // col1 
+                12, 2, 6, 7, // col2
+                13, 15, 5, 3, // col3
+                20, 4, 14, 18, // col4
+                11, 19, 1, 8 // col5
+            };
+            
+            float expectedEdge[] = {11, 19, 1, 8};
+            float edge[y];
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(cl_float), values);
+            cl::Buffer edgeBuf(wrapper->context, CL_MEM_READ_WRITE, y*sizeof(cl_float));
+            
+            cl::Kernel *k = &(wrapper->kernels["writeVariableEdgeCopy"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, edgeBuf);
+            k->setArg(2, y);
+            k->setArg(3, x);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(y), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(edgeBuf, CL_TRUE, 0, y*sizeof(cl_float), edge);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < y; i++) {
+                TS_ASSERT_EQUALS(edge[i], expectedEdge[i]);
+            }
+        }
+        
+        void testReadVariableEdgeCopy() {
+            unsigned int x = 6;
+            unsigned int y = 4;
+            unsigned int size = x*y;
+            float values[] = {
+                14, 12, 10, 9, // col1
+                16, 17, 2, 6, // col2
+                21, 7, 13, 2, // col3
+                5, 3, 20, 26, // col4
+                4, 5, 4, 11, // col5
+                19, 7, 1, 18 // col6
+            };
+            
+            
+            float expectedValues[] = {
+                16, 2, 4, 13, // col1
+                16, 17, 2, 6, // col2
+                21, 7, 13, 2, // col3
+                5, 3, 20, 26, // col4
+                4, 5, 4, 11, // col5
+                19, 7, 1, 18 // col6
+            };
+            
+            float edge[] = {16, 2, 4, 13};
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(cl_float), values);
+            cl::Buffer edgeBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), y*sizeof(cl_float), edge);
+            
+            cl::Kernel *k = &(wrapper->kernels["readVariableEdgeCopy"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, edgeBuf);
+            k->setArg(2, y);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(y), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, size*sizeof(cl_float), values);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < size; i++) {
+                TS_ASSERT_EQUALS(values[i], expectedValues[i]);
+            }
+        }
 };

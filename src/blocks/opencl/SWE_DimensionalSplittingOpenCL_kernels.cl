@@ -343,7 +343,7 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     size_t x = get_global_id(0);
     size_t y = get_global_id(1);
     size_t rows = get_global_size(1);
-    size_t cols = get_global_size(0)+2;
+    size_t cols = get_global_size(0)+1;
     
     size_t cellId = colMajor(x+1, y, rows);
     size_t leftId = rowMajor(x, y, cols);
@@ -362,7 +362,7 @@ __kernel void dimensionalSplitting_XSweep_updateUnknowns(
     size_t gid = get_group_id(0);
     size_t localsize = get_local_size(0);
     size_t start = gid*localsize;
-    size_t cols = edges+2;
+    size_t cols = edges+1;
     
     size_t cellOffset = colMajor(start+1, get_group_id(1), rows); // skip ghost column
     size_t leftOffset = rowMajor(start, get_group_id(1), cols);
@@ -687,4 +687,38 @@ __kernel void setBottomTopBoundary(
     h[dstId] = h[srcId];
     hu[dstId] = hu[srcId];
     hv[dstId] = topSign*hv[srcId];
+}
+
+
+ 
+/// Write the left-most column of a buffer into a copy-column buffer that is transferred to another device
+/**
+ * Note that the source buffer is assumed to be in row-major order
+ * 
+ * @param source The source buffer
+ * @param copyBuffer The column buffer
+ * @param cols The number of columns of the source buffer
+ */
+__kernel void writeNetUpdatesEdgeCopy(__global float* source, __global float* copyBuffer, __const uint cols)
+{
+    size_t sourceId = rowMajor(0, get_global_id(0), (size_t)cols);
+    size_t destinationId = get_global_id(0);
+    
+    copyBuffer[destinationId] = source[sourceId];
+}
+
+/// read the right-most column from a copy-column buffer into a destination buffer
+/**
+ * Note that the destination buffer is assumed to be in row-major order
+ * 
+ * @param source The destination buffer
+ * @param copyBuffer The column buffer
+ * @param cols The number of columns of the destination buffer
+ */
+__kernel void readNetUpdatesEdgeCopy(__global float* destination, __global float* copyBuffer, __const uint cols)
+{
+    size_t sourceId = get_global_id(0);
+    size_t destinationId = rowMajor(cols-1, get_global_id(0), (size_t)cols);
+    
+    destination[destinationId] = copyBuffer[sourceId];
 }

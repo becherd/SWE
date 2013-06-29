@@ -537,7 +537,7 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             float dt_dx = 0.5;
             
             _runUpdate( "dimensionalSplitting_XSweep_updateUnknowns",
-                    srcCount, updCount, x-2, y, DIR_X,
+                    srcCount, updCount, x-1, y, DIR_X,
                     dt_dx,
                     h, hu,
                     hNetUpdateLeft, hNetUpdateRight,
@@ -805,6 +805,80 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
         
             for(unsigned int i = 0; i < groupCount; i++) {
                 TS_ASSERT_EQUALS(values2[workGroup*i], max[i]);
+            }
+        }
+        
+        void testWriteNetUpdatesEdgeCopy() {
+            unsigned int x = 5;
+            unsigned int y = 4;
+            unsigned int size = x*y;
+            float values[] = {
+                17, 10, 9, 16, 12,
+                2, 6, 7, 13, 15,
+                5, 3, 20, 4, 14,
+                18, 11, 19, 1, 8
+            };
+            
+            float expectedEdge[] = {17, 2, 5, 18};
+            float edge[y];
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(cl_float), values);
+            cl::Buffer edgeBuf(wrapper->context, CL_MEM_READ_WRITE, y*sizeof(cl_float));
+            
+            cl::Kernel *k = &(wrapper->kernels["writeNetUpdatesEdgeCopy"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, edgeBuf);
+            k->setArg(2, x);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(y), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(edgeBuf, CL_TRUE, 0, y*sizeof(cl_float), edge);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < y; i++) {
+                TS_ASSERT_EQUALS(edge[i], expectedEdge[i]);
+            }
+        }
+        
+        void testReadNetUpdatesEdgeCopy() {
+            unsigned int x = 6;
+            unsigned int y = 4;
+            unsigned int size = x*y;
+            float values[] = {
+                17, 12, 10, 9, 16, -1,
+                2, 6, 21, 7, 13, -2,
+                5, 3, 20, 26, 4, -3,
+                18, 11, 19, 7, 1, -4
+            };
+            
+            float expectedValues[] = {
+                17, 12, 10, 9, 16, 17,
+                2, 6, 21, 7, 13, 2,
+                5, 3, 20, 26, 4, 5,
+                18, 11, 19, 7, 1, 18
+            };
+            
+            float edge[] = {17, 2, 5, 18};
+            
+            cl::Buffer valuesBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), size*sizeof(cl_float), values);
+            cl::Buffer edgeBuf(wrapper->context, (CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR), y*sizeof(cl_float), edge);
+            
+            cl::Kernel *k = &(wrapper->kernels["readNetUpdatesEdgeCopy"]);
+            k->setArg(0, valuesBuf);
+            k->setArg(1, edgeBuf);
+            k->setArg(2, x);
+            
+            try {
+                wrapper->queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(y), cl::NullRange);
+                wrapper->queues[0].enqueueReadBuffer(valuesBuf, CL_TRUE, 0, size*sizeof(cl_float), values);
+            } catch(cl::Error &e) {
+                wrapper->handleError(e);
+            }
+        
+            for(unsigned int i = 0; i < size; i++) {
+                TS_ASSERT_EQUALS(values[i], expectedValues[i]);
             }
         }
 };

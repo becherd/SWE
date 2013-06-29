@@ -37,6 +37,11 @@ protected:
     //! internal buffers for computed wavespeeds
     std::vector<cl::Buffer> waveSpeeds;
     
+    //! internal copy-buffers to copy left going h net-updates at edge from device i+1 to device i
+    std::vector<cl::Buffer> hNetUpdatesLeftEdgeCopy;
+    //! internal copy-buffers to copy left going hu net-updates at edge from device i+1 to device i
+    std::vector<cl::Buffer> huNetUpdatesLeftEdgeCopy;
+    
     //! SubBuffer column chunk size
     unsigned int chunkSize;
     

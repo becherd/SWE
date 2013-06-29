@@ -293,6 +293,16 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
         } catch(cl::Error &e) {
             handleError(e, "Unable to create update buffers");
         }
+        
+        if(i < useDevices-1) {
+            // create edge copy buffers
+            try {
+                hNetUpdatesLeftEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
+                huNetUpdatesLeftEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to create edge copy buffers");
+            }
+        }
     }
 }
 
@@ -575,23 +585,48 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         maxTimestep = dx/maxWaveSpeed * 0.4f;
         
         // Copy net update buffers at edges from device n+1 to device n
-        for(unsigned int i = 0; i < useDevices-1; i++) {
-            // We're initiating a copy from device n (to fetch data from device n+1)
-            length = bufferChunks[i].second;
-            size_t offset = (length-1)*colSize;
+        for(unsigned int i = 0; i < useDevices-1; i++) {            
             cl::Event e;
-            queues[i].enqueueCopyBuffer(hNetUpdatesLeft[i+1], hNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
+            std::vector<cl::Event> copyWaitListH, copyWaitListHu;
+            unsigned int cols;
+            
+            cols = (unsigned int)bufferChunks[i+1].second;
+            k = &(kernels["writeNetUpdatesEdgeCopy"]);
+            // READ MEMORY TO EDGE COPY ON DEVICE i+1
+            // write h
+            k->setArg(0, hNetUpdatesLeft[i+1]);
+            k->setArg(1, hNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i+1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &e);
+            addProfilingEvent(e, "writeNetUpdatesEdgeCopy");
+            copyWaitListH.push_back(e);
+            
+            // write hu
+            k->setArg(0, huNetUpdatesLeft[i+1]);
+            k->setArg(1, huNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i+1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &e);
+            addProfilingEvent(e, "writeNetUpdatesEdgeCopy");
+            copyWaitListHu.push_back(e);
+            
+            // READ EDGE COPY ON DEVICE i INTO MEMORY
+            cols = (unsigned int)bufferChunks[i].second;
+            k = &(kernels["readNetUpdatesEdgeCopy"]);
+            // read h
+            k->setArg(0, hNetUpdatesLeft[i]);
+            k->setArg(1, hNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &copyWaitListH, &e);
+            addProfilingEvent(e, "readNetUpdatesEdgeCopy");
             deviceWaitList[i].push_back(e);
-            addProfilingEvent(e, "copy netupdates");
-            queues[i].enqueueCopyBuffer(hNetUpdatesRight[i+1], hNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
+            
+            // read hu
+            k->setArg(0, huNetUpdatesLeft[i]);
+            k->setArg(1, huNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &copyWaitListHu, &e);
+            addProfilingEvent(e, "readNetUpdatesEdgeCopy");
             deviceWaitList[i].push_back(e);
-            addProfilingEvent(e, "copy netupdates");
-            queues[i].enqueueCopyBuffer(huNetUpdatesLeft[i+1], huNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
-            deviceWaitList[i].push_back(e);
-            addProfilingEvent(e, "copy netupdates");
-            queues[i].enqueueCopyBuffer(huNetUpdatesRight[i+1], huNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
-            deviceWaitList[i].push_back(e);
-            addProfilingEvent(e, "copy netupdates");
         }
         
         // enqueue updateUnknowns Kernel (X-Sweep)
@@ -600,9 +635,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         for(unsigned int i = 0; i < useDevices; i++) {
             
             length = bufferChunks[i].second;
-            
-            if(i == useDevices-1)
-                length--; // If this is the last buffer, do not try to update the last column
             
             size_t groupSize;
             cl::NDRange globalRange, localRange;
@@ -663,8 +695,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         for(unsigned int i = 0; i < useDevices; i++) {
             
             length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--;
             
             size_t groupSize, globalSize;
             cl::NDRange globalRange, localRange;
@@ -751,8 +781,6 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         for(unsigned int i = 0; i < useDevices; i++) {
             
             length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--;
             
             size_t groupSize;
             cl::NDRange globalRange, localRange;
@@ -792,7 +820,7 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // Copy updated edge columns after Y-Sweep so we ensure that the overlapping 
         // edge columns really have identical values
         for(unsigned int i = 0; i < useDevices-1; i++) {
-            // We're initiating a copy from device n (to fetch data from device n+1)
+            // We're initiating a copy from device n+1 (to fetch data from device n)
             length = bufferChunks[i].second;
             size_t offset = (length-1)*colSize;
             cl::Event e;

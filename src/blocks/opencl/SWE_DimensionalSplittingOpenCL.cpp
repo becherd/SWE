@@ -222,6 +222,56 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
     queue.flush();
 }
 
+void SWE_DimensionalSplittingOpenCL::writeNetUpdateEdge(cl::CommandQueue &queue,
+                                                        cl::Buffer &srcBuffer,
+                                                        cl::Buffer &copyBuffer,
+                                                        unsigned int columns,
+                                                        cl::Event *waitEvent,
+                                                        cl::Event *event)
+{
+    cl::Kernel *k = &(kernels["writeNetUpdatesEdgeCopy"]);
+    // READ MEMORY TO EDGE COPY ON DEVICE i+1
+    try {
+        k->setArg(0, srcBuffer);
+        k->setArg(1, copyBuffer);
+        k->setArg(2, columns);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set kernel arguments for net-update write copy edge");
+    }
+    
+    std::vector<cl::Event> waitList;
+    if(waitEvent != NULL)
+        waitList.push_back(*waitEvent);
+    
+    queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, event);
+    addProfilingEvent(*event, "writeNetUpdatesEdgeCopy");
+}
+
+void SWE_DimensionalSplittingOpenCL::readNetUpdateEdge(cl::CommandQueue &queue,
+                                                        cl::Buffer &dstBuffer,
+                                                        cl::Buffer &copyBuffer,
+                                                        unsigned int columns,
+                                                        cl::Event *waitEvent,
+                                                        cl::Event *event)
+{
+    cl::Kernel *k = &(kernels["readNetUpdatesEdgeCopy"]);
+    // READ MEMORY TO EDGE COPY ON DEVICE i+1
+    try {
+        k->setArg(0, dstBuffer);
+        k->setArg(1, copyBuffer);
+        k->setArg(2, columns);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set kernel arguments for net-update read copy edge");
+    }
+    
+    std::vector<cl::Event> waitList;
+    if(waitEvent != NULL)
+        waitList.push_back(*waitEvent);
+    
+    queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, event);
+    addProfilingEvent(*event, "readNetUpdatesEdgeCopy");
+}
+
 void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t deviceCount) {
     
     /**
@@ -585,48 +635,26 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         maxTimestep = dx/maxWaveSpeed * 0.4f;
         
         // Copy net update buffers at edges from device n+1 to device n
-        for(unsigned int i = 0; i < useDevices-1; i++) {            
-            cl::Event e;
-            std::vector<cl::Event> copyWaitListH, copyWaitListHu;
+        for(unsigned int i = 0; i < useDevices-1; i++) {
+            cl::Event hWriteEvent, huWriteEvent, hReadEvent, huReadEvent;
             unsigned int cols;
             
             cols = (unsigned int)bufferChunks[i+1].second;
-            k = &(kernels["writeNetUpdatesEdgeCopy"]);
-            // READ MEMORY TO EDGE COPY ON DEVICE i+1
             // write h
-            k->setArg(0, hNetUpdatesLeft[i+1]);
-            k->setArg(1, hNetUpdatesLeftEdgeCopy[i]);
-            k->setArg(2, cols);
-            queues[i+1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &e);
-            addProfilingEvent(e, "writeNetUpdatesEdgeCopy");
-            copyWaitListH.push_back(e);
+            writeNetUpdateEdge(queues[i+1], hNetUpdatesLeft[i+1], hNetUpdatesLeftEdgeCopy[i], cols, NULL, &hWriteEvent);
             
             // write hu
-            k->setArg(0, huNetUpdatesLeft[i+1]);
-            k->setArg(1, huNetUpdatesLeftEdgeCopy[i]);
-            k->setArg(2, cols);
-            queues[i+1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &e);
-            addProfilingEvent(e, "writeNetUpdatesEdgeCopy");
-            copyWaitListHu.push_back(e);
+            writeNetUpdateEdge(queues[i+1], huNetUpdatesLeft[i+1], huNetUpdatesLeftEdgeCopy[i], cols, NULL, &huWriteEvent);
             
-            // READ EDGE COPY ON DEVICE i INTO MEMORY
+            
             cols = (unsigned int)bufferChunks[i].second;
-            k = &(kernels["readNetUpdatesEdgeCopy"]);
             // read h
-            k->setArg(0, hNetUpdatesLeft[i]);
-            k->setArg(1, hNetUpdatesLeftEdgeCopy[i]);
-            k->setArg(2, cols);
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &copyWaitListH, &e);
-            addProfilingEvent(e, "readNetUpdatesEdgeCopy");
-            deviceWaitList[i].push_back(e);
+            readNetUpdateEdge(queues[i], hNetUpdatesLeft[i], hNetUpdatesLeftEdgeCopy[i], cols, &hWriteEvent, &hReadEvent);
+            deviceWaitList[i].push_back(hReadEvent);
             
             // read hu
-            k->setArg(0, huNetUpdatesLeft[i]);
-            k->setArg(1, huNetUpdatesLeftEdgeCopy[i]);
-            k->setArg(2, cols);
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &copyWaitListHu, &e);
-            addProfilingEvent(e, "readNetUpdatesEdgeCopy");
-            deviceWaitList[i].push_back(e);
+            readNetUpdateEdge(queues[i], huNetUpdatesLeft[i], huNetUpdatesLeftEdgeCopy[i], cols, &huWriteEvent, &huReadEvent);
+            deviceWaitList[i].push_back(huReadEvent);
         }
         
         // enqueue updateUnknowns Kernel (X-Sweep)

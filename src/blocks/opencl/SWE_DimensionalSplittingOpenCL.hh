@@ -42,6 +42,11 @@ protected:
     //! internal copy-buffers to copy left going hu net-updates at edge from device i+1 to device i
     std::vector<cl::Buffer> huNetUpdatesLeftEdgeCopy;
     
+    //! internal copy-buffers to copy h values at edge from device i to device i+1
+    std::vector<cl::Buffer> hEdgeCopy;
+    //! internal copy-buffers to copy hu/hv values at edge from device i to device i+1
+    std::vector<cl::Buffer> huEdgeCopy;
+    
     //! SubBuffer column chunk size
     unsigned int chunkSize;
     
@@ -73,6 +78,38 @@ protected:
    
     /// Create OpenCL device buffers for h, hu, hv, and b variables
     void createBuffers();
+    
+    /// Write netupdates from a source buffer into an edge-copy buffer
+    /*
+     * @param queue The command queue to perform the operation
+     * @param srcBuffer The source buffer to read into
+     * @param copyBuffer The copy-buffer to read from
+     * @param columns The number of columns in the source buffer
+     * @param waitEvent OpenCL queue event to wait for before starting
+     * @param event The event returned by the operation (should be waited on to read result)
+     */
+    void writeNetUpdateEdge( cl::CommandQueue &queue,
+                            cl::Buffer &srcBuffer,
+                            cl::Buffer &copyBuffer,
+                            unsigned int columns,
+                            cl::Event *waitEvent,
+                            cl::Event *event);
+    
+    /// Read netupdates from a edge-copy buffer into a destination buffer
+    /*
+     * @param queue The command queue to perform the operation
+     * @param dstBuffer The destination buffer to read into
+     * @param copyBuffer The copy-buffer to read from
+     * @param columns The number of columns in the destination buffer
+     * @param waitEvent OpenCL queue event to wait for before starting
+     * @param event The event returned by the operation (should be waited on to read result)
+     */
+    void readNetUpdateEdge( cl::CommandQueue &queue,
+                            cl::Buffer &dstBuffer,
+                            cl::Buffer &copyBuffer,
+                            unsigned int columns,
+                            cl::Event *waitEvent,
+                            cl::Event *event);
     
     /// Calculate buffer chunk sizes for splitting domain among multiple devices
     /**

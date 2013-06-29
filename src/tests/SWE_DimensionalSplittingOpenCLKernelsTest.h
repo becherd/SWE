@@ -308,10 +308,10 @@ class SWE_DimensionalSplittingOpenCLKernelsTest : public CxxTest::TestSuite {
             cl::Program::Sources kernelSources;
             getKernelSources(kernelSources);
             wrapper = new OpenCLWrapper();
-            wrapper->buildProgram(kernelSources);
+            wrapper->buildProgram(kernelSources, "-D MEM_GLOBAL -D GLOBAL_REDUCE -D DEBUG");
             
             wrapperLocal = new OpenCLWrapper();
-            wrapperLocal->buildProgram(kernelSources, "-D MEM_LOCAL");
+            wrapperLocal->buildProgram(kernelSources, "-D MEM_LOCAL -D GLOBAL_REDUCE -D DEBUG");
         }
         
         void tearDown() {

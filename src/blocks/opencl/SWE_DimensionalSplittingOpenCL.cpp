@@ -272,6 +272,49 @@ void SWE_DimensionalSplittingOpenCL::readNetUpdateEdge(cl::CommandQueue &queue,
     addProfilingEvent(*event, "readNetUpdatesEdgeCopy");
 }
 
+void SWE_DimensionalSplittingOpenCL::writeVariableEdge(cl::CommandQueue &queue,
+                        cl::Buffer &srcBuffer,
+                        cl::Buffer &copyBuffer,
+                        unsigned int columns,
+                        std::vector<cl::Event> *waitEvents,
+                        cl::Event *event)
+{
+    cl::Kernel *k = &(kernels["writeVariableEdgeCopy"]);
+    
+    try {
+        k->setArg(0, srcBuffer);
+        k->setArg(1, copyBuffer);
+        k->setArg(2, h.getRows());
+        k->setArg(3, columns);
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set kernel arguments for variable read copy edge");
+    }
+    
+    queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, waitEvents, event);
+    addProfilingEvent(*event, "writeVariableEdgeCopy");
+}
+
+void SWE_DimensionalSplittingOpenCL::readVariableEdge( cl::CommandQueue &queue,
+                        cl::Buffer &dstBuffer,
+                        cl::Buffer &copyBuffer,
+                        unsigned int columns,
+                        std::vector<cl::Event> *waitEvents,
+                        cl::Event *event)
+{
+    cl::Kernel *k = &(kernels["readVariableEdgeCopy"]);
+    
+    try {
+        k->setArg(0, dstBuffer);
+        k->setArg(1, copyBuffer);
+        k->setArg(2, h.getRows());
+    } catch(cl::Error &e) {
+        handleError(e, "Unable to set kernel arguments for variable read copy edge");
+    }
+    
+    queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, waitEvents, event);
+    addProfilingEvent(*event, "readVariableEdgeCopy");
+}
+
 void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t deviceCount) {
     
     /**
@@ -349,6 +392,8 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
             try {
                 hNetUpdatesLeftEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
                 huNetUpdatesLeftEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
+                hEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
+                huEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
             } catch(cl::Error &e) {
                 handleError(e, "Unable to create edge copy buffers");
             }
@@ -696,24 +741,47 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             cl::Event e;
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
             addProfilingEvent(e, "X-Update");
-            waitList.push_back(e);
+            deviceWaitList[i].push_back(e);
         }
         
         // Copy updates edges between buffers from device n to n+1
         for(unsigned int i = 0; i < useDevices-1; i++) {
             // We're initiating a copy from device n (to fetch data from device n+1)
-            length = bufferChunks[i].second;
-            size_t offset = (length-1)*colSize;
-            cl::Event e;
-            deviceWaitList[i+1].clear();
+            // length = bufferChunks[i].second;
+            // size_t offset = (length-1)*colSize;
+            // cl::Event e;
+            // deviceWaitList[i+1].clear();
+            // 
+            // queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            // deviceWaitList[i+1].push_back(e);
+            // addProfilingEvent(e, "copy edges");
+            // queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
+            // deviceWaitList[i+1].push_back(e);
+            // addProfilingEvent(e, "copy edges");
+            // // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
             
-            queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
-            deviceWaitList[i+1].push_back(e);
-            addProfilingEvent(e, "copy edges");
-            queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
-            deviceWaitList[i+1].push_back(e);
-            addProfilingEvent(e, "copy edges");
-            // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
+            // ==
+            
+            cl::Event hWriteEvent, huWriteEvent, hReadEvent, huReadEvent;
+            unsigned int cols;
+            
+            cols = (unsigned int)bufferChunks[i].second;
+            // write h
+            writeVariableEdge(queues[i], hd[i], hEdgeCopy[i], cols, &(deviceWaitList[i]), &hWriteEvent);
+            deviceWaitList[i+1].push_back(hWriteEvent);
+            
+            // write hu
+            writeVariableEdge(queues[i], hud[i], huEdgeCopy[i], cols, &(deviceWaitList[i]), &huWriteEvent);
+            deviceWaitList[i+1].push_back(huWriteEvent);
+            
+            cols = (unsigned int)bufferChunks[i+1].second;
+            // read h
+            readVariableEdge(queues[i+1], hd[i+1], hEdgeCopy[i], cols, &(deviceWaitList[i+1]), &hReadEvent);
+            deviceWaitList[i+1].push_back(hReadEvent);
+            
+            // read hu
+            readVariableEdge(queues[i+1], hud[i+1], huEdgeCopy[i], cols, &(deviceWaitList[i+1]), &huReadEvent);
+            deviceWaitList[i+1].push_back(huReadEvent);
         }
         
         waitList.clear();
@@ -848,20 +916,44 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // Copy updated edge columns after Y-Sweep so we ensure that the overlapping 
         // edge columns really have identical values
         for(unsigned int i = 0; i < useDevices-1; i++) {
-            // We're initiating a copy from device n+1 (to fetch data from device n)
-            length = bufferChunks[i].second;
-            size_t offset = (length-1)*colSize;
-            cl::Event e;
-            deviceWaitList[i+1].clear();
+            // We're initiating a copy from device n (to fetch data from device n+1)
+            // length = bufferChunks[i].second;
+            // size_t offset = (length-1)*colSize;
+            // cl::Event e;
+            // deviceWaitList[i+1].clear();
+            // 
+            // queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            // deviceWaitList[i+1].push_back(e);
+            // addProfilingEvent(e, "copy edges");
+            // queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
+            // deviceWaitList[i+1].push_back(e);
+            // addProfilingEvent(e, "copy edges");
+            // // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
             
-            queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
-            addProfilingEvent(e, "copy edges (after Y-update)");
-            waitList.push_back(e);
-            queues[i+1].enqueueCopyBuffer(hvd[i], hvd[i+1], offset, 0, colSize, &waitList, &e);
-            addProfilingEvent(e, "copy edges (after Y-update)");
-            waitList.push_back(e);
-            // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
+            // ==
+            
+            cl::Event hWriteEvent, huWriteEvent, hReadEvent, huReadEvent;
+            unsigned int cols;
+            
+            cols = (unsigned int)bufferChunks[i].second;
+            // write h
+            writeVariableEdge(queues[i], hd[i], hEdgeCopy[i], cols, &(deviceWaitList[i]), &hWriteEvent);
+            deviceWaitList[i+1].push_back(hWriteEvent);
+            
+            // write hu
+            writeVariableEdge(queues[i], hvd[i], huEdgeCopy[i], cols, &(deviceWaitList[i]), &huWriteEvent);
+            deviceWaitList[i+1].push_back(huWriteEvent);
+            
+            cols = (unsigned int)bufferChunks[i+1].second;
+            // read h
+            readVariableEdge(queues[i+1], hd[i+1], hEdgeCopy[i], cols, &(deviceWaitList[i+1]), &hReadEvent);
+            waitList.push_back(hReadEvent);
+            
+            // read hu
+            readVariableEdge(queues[i+1], hvd[i+1], huEdgeCopy[i], cols, &(deviceWaitList[i+1]), &huReadEvent);
+            waitList.push_back(huReadEvent);
         }
+        
         
         for(unsigned int i = 0; i < useDevices; i++)
             queues[i].flush();

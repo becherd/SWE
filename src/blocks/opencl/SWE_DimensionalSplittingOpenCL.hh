@@ -82,13 +82,13 @@ protected:
     /// Write netupdates from a source buffer into an edge-copy buffer
     /*
      * @param queue The command queue to perform the operation
-     * @param srcBuffer The source buffer to read into
-     * @param copyBuffer The copy-buffer to read from
+     * @param srcBuffer The source buffer to read from
+     * @param copyBuffer The copy-buffer to write into
      * @param columns The number of columns in the source buffer
      * @param waitEvent OpenCL queue event to wait for before starting
      * @param event The event returned by the operation (should be waited on to read result)
      */
-    void writeNetUpdateEdge( cl::CommandQueue &queue,
+    void writeNetUpdateEdge(cl::CommandQueue &queue,
                             cl::Buffer &srcBuffer,
                             cl::Buffer &copyBuffer,
                             unsigned int columns,
@@ -109,6 +109,38 @@ protected:
                             cl::Buffer &copyBuffer,
                             unsigned int columns,
                             cl::Event *waitEvent,
+                            cl::Event *event);
+                            
+    /// Write variable-edge from a source buffer into an edge-copy buffer
+    /*
+     * @param queue The command queue to perform the operation
+     * @param srcBuffer The source buffer to read from
+     * @param copyBuffer The copy-buffer to write into
+     * @param columns The number of columns in the source buffer
+     * @param waitEvent OpenCL queue event to wait for before starting
+     * @param event The event returned by the operation (should be waited on to read result)
+     */
+    void writeVariableEdge(cl::CommandQueue &queue,
+                            cl::Buffer &srcBuffer,
+                            cl::Buffer &copyBuffer,
+                            unsigned int columns,
+                            std::vector<cl::Event> *waitEvents,
+                            cl::Event *event);
+    
+    /// Read variable-edge from a edge-copy buffer into a destination buffer
+    /*
+     * @param queue The command queue to perform the operation
+     * @param dstBuffer The destination buffer to read into
+     * @param copyBuffer The copy-buffer to read from
+     * @param columns The number of columns in the destination buffer
+     * @param waitEvent OpenCL queue event to wait for before starting
+     * @param event The event returned by the operation (should be waited on to read result)
+     */
+    void readVariableEdge( cl::CommandQueue &queue,
+                            cl::Buffer &dstBuffer,
+                            cl::Buffer &copyBuffer,
+                            unsigned int columns,
+                            std::vector<cl::Event> *waitEvents,
                             cl::Event *event);
     
     /// Calculate buffer chunk sizes for splitting domain among multiple devices

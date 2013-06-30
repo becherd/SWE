@@ -110,6 +110,7 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
 
 void SWE_DimensionalSplittingOpenCL::printProfilingInformation()
 {
+#ifdef OPENCL_PROFILING
     std::cout << "OpenCL Kernel and Memory Operation Profiling:" << std::endl;
     std::map<std::string, profilingInfo>::const_iterator opItr;
     for(opItr = profilingEvents.begin(); opItr != profilingEvents.end(); ++opItr) {
@@ -128,6 +129,9 @@ void SWE_DimensionalSplittingOpenCL::printProfilingInformation()
             std::cout << ": " << float(stateItr->second)/1.0e9 << " seconds" << std::endl;
         }
     }
+#else
+    std::cout << "OpenCL Kernel and Memory profiling is disabled" << std::endl;
+#endif
 }
  
 void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, size_t length, cl::Event *waitEvent, cl::Event *event) {

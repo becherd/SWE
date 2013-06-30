@@ -233,7 +233,9 @@ public:
      * @param description The description (e.g. Kernel name)
      */
     inline void addProfilingEvent(cl::Event &e, const char* description) {
+#ifdef OPENCL_PROFILING
         e.setCallback(CL_COMPLETE, OpenCLWrapper::eventProfilingCallback, (void*)getProfilingCallbackInfo(description));
+#endif
     }
     
     /// Callback function to profile events, e.g. measure kernel execution time

@@ -1,7 +1,11 @@
 #include <iostream>
 #include <unistd.h>
 
+#ifdef USEOPENCL
+#include "blocks/opencl/SWE_DimensionalSplittingOpenCL.hh"
+#else
 #include "blocks/SWE_DimensionalSplitting.hh"
+#endif
 #include "scenarios/SWE_Scenario.hh"
 #include "scenarios/SWE_PartialDambreak.hh"
 #include "scenarios/SWE_ArtificialTsunamiScenario.hh"
@@ -44,6 +48,17 @@ int main( int argc, char** argv ) {
     
     //! the total simulation time
     int l_simulationTime = 0.0;
+
+#ifdef USEOPENCL
+    //! Maximum number of computing devices to be used (OpenCL specific, 0 = unlimited)
+    unsigned int l_maxDevices = 0;
+    
+    //! Maximum kernel group size
+    size_t l_maxGroupSize = 1024;
+    
+    //! Chosen kernel optimization type
+    KernelType l_kernelType = MEM_GLOBAL;
+#endif
     
     //! type of boundary conditions at LEFT, RIGHT, TOP, and BOTTOM boundary
     BoundaryType l_boundaryTypes[4];
@@ -77,6 +92,9 @@ int main( int argc, char** argv ) {
     // -d <file>       // input displacement data file name (REQUIRED for certain scenarios)
     // -c <file>       // checkpoints data file name
     // -f <float>      // output coarseness factor
+    // -l <num>        // maximum number of computing devices
+    // -m <code>       // Kernel memory optimization type
+    // -g <num         // Kernel work group size
     // -n <num>        // Number of checkpoints
     // -t <float>      // Simulation time in seconds
     // -s <scenario>   // Artificial scenario name ("artificialtsunami", "partialdambreak")
@@ -87,7 +105,7 @@ int main( int argc, char** argv ) {
     int c;
     int showUsage = 0;
     std::string optstr;
-    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:")) != -1) {
+    while ((c = getopt(argc, argv, "x:y:o:i:d:c:n:t:b:s:f:l:m:g:")) != -1) {
         switch(c) {
             case 'x':
                 l_nX = atoi(optarg);
@@ -109,6 +127,25 @@ int main( int argc, char** argv ) {
                 l_checkpointFileName = std::string(optarg);
                 break;
 #endif
+            case 'l':
+#ifdef USEOPENCL
+                l_maxDevices = atoi(optarg);
+#endif
+                break;
+            case 'g':
+#ifdef USEOPENCL
+                l_maxGroupSize = atoi(optarg);
+#endif
+            break;
+            case 'm':
+#ifdef USEOPENCL
+                optstr = std::string(optarg);
+                if(optstr == "g" || optstr == "global")
+                    l_kernelType = MEM_GLOBAL;
+                else
+                    l_kernelType = MEM_LOCAL;
+#endif
+                break;
             case 'n':
                 l_numberOfCheckPoints = atoi(optarg);
                 break;
@@ -213,6 +250,12 @@ int main( int argc, char** argv ) {
             if(!l_bathymetryFileName.empty() || !l_displacementFileName.empty())
                 std::cerr << "WARNING: Supplied bathymetry and displacement data will be ignored" << std::endl;
         }
+#ifdef USEOPENCL
+        if(l_maxGroupSize == 0 || (l_maxGroupSize & (l_maxGroupSize - 1))) {
+            std::cout << "Group size must be greater than zero and a power of two!" << std::endl;
+            showUsage = 1;
+        }
+#endif
     }
     
     if(showUsage) {
@@ -233,6 +276,7 @@ int main( int argc, char** argv ) {
         std::cout << "    -n <num>        Number of checkpoints to be written" << std::endl;
         std::cout << "    -t <time>       Total simulation time" << std::endl;
         std::cout << "    -f <num>        Coarseness factor (> 1.0)" << std::endl;
+        std::cout << "    -l <num>        Maximum number of computing devices (OpenCL only)" << std::endl;
         std::cout << "    -b <code>       Boundary Conditions" << std::endl;
         std::cout << "                    Codes: Combination of 'w' (WALL) and 'o' (OUTFLOW)" << std::endl;
         std::cout << "                      One char: Option for ALL boundaries" << std::endl;
@@ -331,7 +375,12 @@ int main( int argc, char** argv ) {
     l_dY = (l_scenario->getBoundaryPos(BND_TOP) - l_scenario->getBoundaryPos(BND_BOTTOM) )/l_nY;
     
     //! Dimensional Splitting Block
+#ifndef USEOPENCL
     SWE_DimensionalSplitting l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY);
+#else
+    SWE_DimensionalSplittingOpenCL l_dimensionalSplitting(l_nX, l_nY, l_dX, l_dY, 0, l_maxDevices, l_kernelType, l_maxGroupSize);
+    l_dimensionalSplitting.printDeviceInformation();
+#endif
     
     //! origin of the simulation domain in x- and y-direction
     float l_originX, l_originY;
@@ -519,6 +568,11 @@ int main( int argc, char** argv ) {
     
     // print average time per cell per iteration
     tools::Logger::logger.printAverageCPUTimePerCellPerIteration(l_iterations, l_nX*(l_nY+2)); 
+    
+#ifdef USEOPENCL
+    // print opencl stats
+    l_dimensionalSplitting.printProfilingInformation();
+#endif
     
     return 0;
 }

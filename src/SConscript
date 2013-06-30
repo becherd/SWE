@@ -31,8 +31,8 @@ import sys
 
 Import('env')
 
-# Code without CUDA
-if env['parallelization'] not in ['cuda', 'mpi_with_cuda']:
+# Code without CUDA and OpenCL
+if env['parallelization'] not in ['cuda', 'mpi_with_cuda', 'opencl']:
   if env['solver'] == 'dimsplit':
     sourceFiles = ['blocks/SWE_DimensionalSplitting.cpp']
   elif env['solver'] != 'rusanov':
@@ -40,6 +40,10 @@ if env['parallelization'] not in ['cuda', 'mpi_with_cuda']:
   else:
     sourceFiles = ['blocks/rusanov/SWE_RusanovBlock.cpp']
 
+# Code with OpenCL
+elif env['parallelization'] == 'opencl':
+  sourceFiles = ['blocks/opencl/SWE_DimensionalSplittingOpenCL.cpp']
+  env.kernel_files = env.Glob('blocks/opencl/*.cl')
 # Code with CUDA
 else:
   sourceFiles = [ 'blocks/cuda/SWE_BlockCUDA.cu',
@@ -98,7 +102,7 @@ if env['parallelization'] in ['none', 'cuda']:
   else:
    print >> sys.stderr, '** The selected configuration is not implemented.'
    Exit(1)
-elif env['parallelization'] == 'openmp':
+elif env['parallelization'] in ['opencl', 'openmp']:
     sourceFiles.append( ['examples/swe_dimensionalsplitting.cpp'] )
 elif env['parallelization'] in ['mpi_with_cuda', 'mpi']:
     sourceFiles.append( ['examples/swe_mpi.cpp'] )
@@ -129,6 +133,16 @@ if(env['disableUnitTests'] == False):
     )
   else:
     print >> sys.stderr, 'WARNING: TsunamiScenarioTest cannot be run because NetCDF support is missing'
+    
+  if env['parallelization'] == 'opencl':
+    env.CxxTest(['tests/SWE_DimensionalSplittingOpenCLKernelsTest.h'])
+    env.CxxTest([
+      'tests/SWE_DimensionalSplittingOpenCLTest.h',
+      env.Object('blocks/opencl/SWE_DimensionalSplittingOpenCL.cpp'),
+      env.Object('blocks/SWE_Block.cpp')
+    ])
+  else:
+    print >> sys.stderr, 'WARNING: OpenCL Unit Tests cannot be run because parallelization is not OpenCL'
     
 # CPU compilation for sure
 for i in sourceFiles:

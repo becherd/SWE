@@ -73,7 +73,7 @@ vars.AddVariables(
               ),
 
   EnumVariable( 'parallelization', 'level of parallelization', 'none',
-                allowed_values=('none', 'openmp', 'cuda', 'mpi_with_cuda', 'mpi')
+                allowed_values=('none', 'openmp', 'opencl', 'cuda', 'mpi_with_cuda', 'mpi')
               ),
 
   EnumVariable( 'computeCapability', 'optional architecture/compute capability of the CUDA card', 'sm_20',
@@ -111,6 +111,8 @@ vars.AddVariables(
   
   BoolVariable( 'useNetCDFCache', 'load full netcdf files into memory for faster access', False ),
   
+  BoolVariable( 'openCLProfiling', 'enable profiling of OpenCL Events', False ),
+  
   BoolVariable( 'xmlRuntime', 'use a xml-file for runtime parameters', False )
 )
 
@@ -120,14 +122,16 @@ vars.AddVariables(
   PathVariable( 'libSDLDir', 'location of libSDL', None),
   PathVariable( 'netCDFDir', 'location of netCDF', None),
   PathVariable( 'asagiDir', 'location of ASAGI', None),
-  PathVariable( 'libxmlDir', 'location of libxml2', None)
+  PathVariable( 'libxmlDir', 'location of libxml2', None),
+  PathVariable( 'openCLIncludeDir', 'location of OpenCL includes', None),
+  PathVariable( 'openCLLibDir', 'location of OpenCL libraries', None)
 )
 
 # set environment
 env = Environment(ENV = {'PATH': os.environ['PATH'], 'LD_LIBRARY_PATH': os.getenv('LD_LIBRARY_PATH')},
         variables=vars,
         toolpath=['#submodules/cxxtest/build_tools/SCons'],
-        tools = ['default', ('cxxtest', {'CXXTEST_INSTALL_DIR':'#/submodules/cxxtest'})])
+        tools = ['default', 'rightnow', ('cxxtest', {'CXXTEST_INSTALL_DIR':'#/submodules/cxxtest'})])
 
 # generate help text
 Help(vars.GenerateHelpText(env))
@@ -156,8 +160,8 @@ if env['parallelization'] != 'cuda' and env['openGL'] == True:
   Exit(3)
 
 # OpenMP parallelization for DimensionalSplitting
-if env['parallelization'] == 'openmp' and env['solver'] != 'dimsplit':
-  print >> sys.stderr, '** The "'+env['solver']+'" solver is not supported in OpenMP.'
+if env['parallelization'] in ['openmp', 'opencl'] and env['solver'] != 'dimsplit':
+  print >> sys.stderr, '** The "'+env['solver']+'" solver is not supported in "'+env['parallelization']+'"".'
   Exit(3)
 
 #
@@ -196,7 +200,8 @@ env.Append(CCFLAGS=['-fmessage-length=0'])
 # set (pre-)compiler flags for the compile modes
 if env['compileMode'] == 'debug':
   env.Append(CPPDEFINES=['DEBUG'])
-
+  env['openCLProfiling'] = True
+  
   if env['compiler'] == 'gnu':
     env.Append(CCFLAGS=['-O0','-g3','-Wall'])
 
@@ -212,6 +217,7 @@ elif env['compileMode'] == 'release':
   elif env['compiler'] == 'intel':
     env.Append(CCFLAGS=['-O2', '-xhost'])
 elif env['compileMode'] == 'analysis':
+  env['openCLProfiling'] = True
   env.Append(CPPDEFINES=['NDEBUG'])
   env.Append(CCFLAGS=['-fno-inline'])
   if env['compiler'] == 'gnu':
@@ -290,6 +296,27 @@ if env['parallelization'] == 'mpi_with_cuda':
 if env['parallelization'] in ['mpi_with_cuda', 'mpi']:
   env.Append(CPPDEFINES=['USEMPI'])
 
+if env['parallelization'] == 'opencl':
+  if 'openCLIncludeDir' in env:
+    env.Append(CPPPATH=[env['openCLIncludeDir']])
+  if 'openCLLibDir' in env:
+    env.Append(LIBPATH=[env['openCLLibDir']])
+  
+  env.Append(CPPDEFINES=['USEOPENCL'])
+  # include dir for generated kernel files
+  env.Append(CPPPATH=['blocks/opencl'])
+  
+  # TODO: allow linking against custom vendor
+  # implementation (e.g. Nvidia CUDA) on Mac OS (Darwin)
+  if env['PLATFORM'] == 'darwin':
+    env.Append(CCFLAGS='-framework OpenCL')
+    env.Append(LINKFLAGS='-framework OpenCL')
+  else:
+    env.Append(LIBS='OpenCL')
+
+  if env['openCLProfiling']:
+      env.Append(CPPDEFINES=['OPENCL_PROFILING'])
+
 if env['openGL'] == True:
   env.Append(LIBS=['SDL', 'GL', 'GLU'])
   if env['openGL_instr'] == True:
@@ -367,9 +394,44 @@ build_dir = env['buildDir']+'/build_'+program_name
 
 # get the src-code files
 env.src_files = []
+env.kernel_files = []
 Export('env')
 SConscript('src/SConscript', variant_dir=build_dir, duplicate=0)
 Import('env')
 
+# prepare opencl kernels for inclusion into program
+if env['parallelization'] == 'opencl':
+  # Transform OpenCL source into hex array
+  oclBuilder = Builder(
+      action = 'xxd -i $SOURCE > $TARGET',
+      src_suffix = '.cl',
+      suffix = '.h',
+      prefix = 'kernels/')
+  env.Append(BUILDERS = {'OpenCLKernel' : oclBuilder})
+  
+  # build kernel headers immediately
+  for i in env.kernel_files:
+    env.RightNow(env.OpenCLKernel(i))
+    
+  # Create header including all transformed OpenCL Kernel files
+  # The header also includes the function getKernelSources 
+  # with which an kernel source object for OpenCL can be retrieved
+  kernelHeaderInclude = ''
+  kernelHeaderFunction = ''
+  for i in env.kernel_files:
+    kernelBaseName = os.path.basename(i.rstr())
+    kernelVarName = i.rstr().replace('.', '_').replace('/', '_')
+    kernelHeaderInclude += '#include "kernels/' + os.path.splitext(kernelBaseName)[0] + '.h"\n'
+    kernelHeaderFunction += '    src.push_back(std::make_pair((char*)'+kernelVarName+', '+kernelVarName+'_len));\n'
+  kernelHeader = kernelHeaderInclude
+  kernelHeader += 'void getKernelSources(cl::Program::Sources &src) {\n'
+  kernelHeader += kernelHeaderFunction
+  kernelHeader += '}\n'
+  
+  kernelFile = open(build_dir + '/blocks/opencl/kernels/kernels.h', 'w')
+  kernelFile.truncate()
+  kernelFile.write(kernelHeader)
+  kernelFile.close()
+  
 # build the program
 env.Program('build/'+program_name, env.src_files)

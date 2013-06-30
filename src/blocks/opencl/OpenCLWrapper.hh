@@ -6,6 +6,14 @@
 #include <cassert>
 #include <iostream>
 #include <map>
+#include <cmath>
+
+#include <pthread.h>
+
+//! Type to identifiy different execution states (queued<->submitted, submitted<->start, start<->end)
+typedef enum { PROFILING_QUEUE, PROFILING_SUBMIT, PROFILING_EXEC } ProfilingState;
+//! Profiling information passed to the profiling callback function
+typedef std::pair< pthread_mutex_t* , std::map<ProfilingState, cl_ulong> > profilingInfo;
 
 /// OpenCL Wrapper
 /**
@@ -37,6 +45,15 @@ protected:
     cl::Program program;
     //! OpenCL Kernels in the program identified by kernel function name
     std::map<std::string, cl::Kernel> kernels;
+    
+    //! Kernel and memory profiling information
+    std::map < std::string, profilingInfo > profilingEvents;
+
+    //! Mutex for exclusive access to profilingEvents
+    pthread_mutex_t profilingMutex;
+    
+    //! Maximum work group size to use for kernel execution
+    size_t workGroupSize;
     
     /// Display info about an OpenCL Exception and exit application
     /**
@@ -143,7 +160,7 @@ protected:
             
             // for each computing device, create an in-order command queue
             for(unsigned int i = 0; i < devices.size(); i++) { 
-                queues.push_back(cl::CommandQueue(context, devices[i]));
+                queues.push_back(cl::CommandQueue(context, devices[i], queueProperties));
             }
         } catch (cl::Error &e) {
             std::cerr << "Error: Unable to create OpenCL context: Error " << e.err() << std::endl;
@@ -152,14 +169,36 @@ protected:
         }
     }
     
+   /// Calculate optimal work group size for kernel and device
+   /**
+    * @param kernel The kernel object to execute
+    * @param device The device to execute the kernel on
+    * @return The work group size
+    */
+   inline size_t getKernelGroupSize( const cl::Kernel &kernel, const cl::Device &device ) {
+       return std::min(workGroupSize, kernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device));
+   }
+   
+   /// Calculate kernel range so that the group size divides kernel range
+   /**
+    * @param groupSize The group size to use
+    * @param range The minimum range to execute on
+    * @return The kernel range to use
+    */
+   inline size_t getKernelRange(size_t groupSize, size_t range) {
+       return groupSize * (size_t)ceil(float(range) / groupSize);
+   }
+    
 public:
     /// Constructor
     /**
      * @param preferredDeviceType The preferred OpenCL device type (CPU, GPU, ..)
      * @param queueProperties OpenCL queue options for device command queues
+     * @param _workGroupSize The maximum work group size to use for kernel execution
      */
     OpenCLWrapper(  cl_device_type preferredDeviceType = 0,
-                    cl_command_queue_properties queueProperties = 0) {
+                    cl_command_queue_properties queueProperties = 0,
+                    size_t _workGroupSize = 1024) : workGroupSize(_workGroupSize){
         // List of available OpenCL device types, highest priority first
         deviceTypes.push_back(CL_DEVICE_TYPE_ACCELERATOR);
         deviceTypes.push_back(CL_DEVICE_TYPE_GPU);
@@ -168,12 +207,59 @@ public:
         
         setupPlatform();
         setupContext(preferredDeviceType, queueProperties);
+        
+        // init profiling mutex
+        pthread_mutex_init(&profilingMutex, NULL);
     }
     
-    void buildProgram(cl::Program::Sources &kernelSources) {
+    /// Destructor
+    ~OpenCLWrapper() {
+        pthread_mutex_destroy(&profilingMutex);
+    }
+    
+    /// Get pointer to profiling info supplied to profiling callback for a certain description (kernel name)
+    /**
+     * @param description The description (e.g. Kernel name)
+     */
+    inline profilingInfo* getProfilingCallbackInfo(const char* description) {
+        profilingInfo *info = &profilingEvents[std::string(description)];
+        info->first = &profilingMutex;
+        return info;
+    }
+    
+    /// Add an OpenCL event ot the list of profiled events
+    /**
+     * @param e The OpenCL event to profile
+     * @param description The description (e.g. Kernel name)
+     */
+    inline void addProfilingEvent(cl::Event &e, const char* description) {
+#ifdef OPENCL_PROFILING
+        e.setCallback(CL_COMPLETE, OpenCLWrapper::eventProfilingCallback, (void*)getProfilingCallbackInfo(description));
+#endif
+    }
+    
+    /// Callback function to profile events, e.g. measure kernel execution time
+    static void eventProfilingCallback(cl_event event, cl_int command_exec_status, void *user_data)
+    {
+        cl_ulong queueTime, submitTime, startTime, endTime;
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &queueTime, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &submitTime, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &startTime, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime, NULL);
+        
+        profilingInfo *info = (profilingInfo *)user_data;
+    
+        pthread_mutex_lock(info->first);
+        (info->second)[PROFILING_QUEUE] += (submitTime - queueTime);
+        (info->second)[PROFILING_SUBMIT] += (startTime - submitTime);
+        (info->second)[PROFILING_EXEC] += (endTime - startTime);
+        pthread_mutex_unlock(info->first);
+    }
+    
+    void buildProgram(cl::Program::Sources &kernelSources, const std::string &options = std::string()) {
         try {        
             program = cl::Program(context, kernelSources);
-            program.build(devices);
+            program.build(devices, options.c_str());
         
             std::vector<cl::Kernel> _kernels;
             program.createKernels(&_kernels);

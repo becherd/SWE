@@ -31,10 +31,11 @@ private:
     * Simulate a one dimensional DamBreak in two dimensions
     * and check the results
     * @param dir The direction of the dambreak (1 for X, 0 for Y)
+    * @param kernelType The kernel type, e.g. whether to use local or global memory
     */
-   void testDamBreak(unsigned int dir) {
+   void testDamBreak(unsigned int dir, KernelType kernelType = MEM_GLOBAL) {
        // Init dimsplitting
-       SWE_DimensionalSplittingOpenCL dimensionalSplitting(SIZE, SIZE, 1.f, 1.f);
+       SWE_DimensionalSplittingOpenCL dimensionalSplitting(SIZE, SIZE, 1.f, 1.f, 0, 0, kernelType);
        
        // Init testing scenario
        DamBreak1DTestScenario scenario(dir);
@@ -194,12 +195,21 @@ public:
         TS_ASSERT_EQUALS(block->bufferChunks[2].second, 32);
     }
     
-    /// Simulate the 1D DamBreak in Y direction
-    void testDamBreakY() {
-        testDamBreak(DamBreak1DTestScenario::DIR_Y);
+    /// Simulate the 1D DamBreak in Y direction with global memory
+    void testDamBreakYGlobal() {
+        testDamBreak(DamBreak1DTestScenario::DIR_Y, MEM_GLOBAL);
     }
-    /// Simulate the 1D DamBreak in X direction
-    void testDamBreakX() {
-        testDamBreak(DamBreak1DTestScenario::DIR_X);
+    /// Simulate the 1D DamBreak in X direction with global memory
+    void testDamBreakXGlobal() {
+        testDamBreak(DamBreak1DTestScenario::DIR_X, MEM_GLOBAL);
+    }
+    
+    /// Simulate the 1D DamBreak in Y direction with local memory
+    void testDamBreakYLocal() {
+        testDamBreak(DamBreak1DTestScenario::DIR_Y, MEM_LOCAL);
+    }
+    /// Simulate the 1D DamBreak in X direction with local memory
+    void testDamBreakXLocal() {
+        testDamBreak(DamBreak1DTestScenario::DIR_X, MEM_LOCAL);
     }
 };

@@ -5,6 +5,9 @@
 #include "blocks/SWE_Block.hh"
 #include "tools/help.hh"
 
+//! Type to set options for kernel optimization types (e.g. memory)
+typedef enum {MEM_LOCAL, MEM_GLOBAL} KernelType;
+
 /**
  * OpenCL Dimensional Splitting Block
  *
@@ -34,6 +37,11 @@ protected:
     //! internal buffers for computed wavespeeds
     std::vector<cl::Buffer> waveSpeeds;
     
+    //! internal copy-buffers to copy left going h net-updates at edge from device i+1 to device i
+    std::vector<cl::Buffer> hNetUpdatesLeftEdgeCopy;
+    //! internal copy-buffers to copy left going hu net-updates at edge from device i+1 to device i
+    std::vector<cl::Buffer> huNetUpdatesLeftEdgeCopy;
+    
     //! SubBuffer column chunk size
     unsigned int chunkSize;
     
@@ -42,6 +50,12 @@ protected:
     
     //! Number of devices that should be used
     unsigned int useDevices;
+    
+    //! The kernel memory type to be used
+    KernelType kernelType;
+    
+    //! The kernel type used for reductions (e.g. maxWaveSpeed reduction)
+    KernelType kernelReduceType;
     
     /// Reduce maximum value in an OpenCL buffer (overwrites the buffer!)
     /**
@@ -53,7 +67,7 @@ protected:
      */
     void reduceMaximum(cl::CommandQueue &queue,
                         cl::Buffer &buffer,
-                        unsigned int length,
+                        size_t length,
                         cl::Event *waitEvent = NULL,
                         cl::Event *event = NULL);
    
@@ -81,17 +95,17 @@ protected:
     
     /// Get the properties to be used for OpenCL Command Queues (e.g. out-of-order execution)
     inline cl_command_queue_properties getCommandQueueProperties() {
-        cl_command_queue_properties properties;
+        cl_command_queue_properties properties = 0;
         
-        properties = CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE;
-#ifndef NDEBUG
-        // Enable profiling in debug mode
-        properties |= CL_QUEUE_PROFILING_ENABLE;
-#endif
+        // Enable out of order execution
+//#ifndef NDEBUG
+//        // Enable profiling in debug mode
+          properties |= CL_QUEUE_PROFILING_ENABLE;
+//#endif
         return properties;
     }
     
-public:
+public:    
     /// Dimensional Splitting Constructor (OpenCL)
     /**
      * @param l_nx The grid size in x-direction (excluding ghost cells)
@@ -100,14 +114,21 @@ public:
      * @param l_dy The mesh size of the Cartesian grid in y-direction
      * @param preferredDeviceType The preferred OpenCL device type to use for computation
      * @param maxDevices Maximum number of computing devices to be used (0 = unlimited)
+     * @param kernelType The kernel memory type to use (MEM_GLOBAL or MEM_LOCAL)
+     * @param workGroupSize The maximum work group size to use (should be a power of two)
      */
     SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
         float l_dx, float l_dy,
         cl_device_type preferredDeviceType = 0,
-        unsigned int maxDevices = 0);
+        unsigned int maxDevices = 0,
+        KernelType kernelType = MEM_GLOBAL,
+        size_t workGroupSize = 1024);
     
     /// Print information about OpenCL devices used
     void printDeviceInformation();
+    
+    /// Print information about OpenCL kernel execution and memory operations
+    void printProfilingInformation();
     
     /// Set conditions according to boundary types
     /**

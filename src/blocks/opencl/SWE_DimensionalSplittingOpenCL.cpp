@@ -14,13 +14,42 @@
 SWE_DimensionalSplittingOpenCL::SWE_DimensionalSplittingOpenCL(int l_nx, int l_ny,
     float l_dx, float l_dy,
     cl_device_type preferredDeviceType,
-    unsigned int maxDevices):
+    unsigned int maxDevices,
+    KernelType _kernelType,
+    size_t _workGroupSize):
     SWE_Block(l_nx, l_ny, l_dx, l_dy),
-    OpenCLWrapper(preferredDeviceType, getCommandQueueProperties())
+    OpenCLWrapper(preferredDeviceType, getCommandQueueProperties(), _workGroupSize),
+    kernelType(_kernelType)
 {
     cl::Program::Sources kernelSources;
     getKernelSources(kernelSources);
-    buildProgram(kernelSources);
+    
+    std::string memOpts, reduceOpts;
+    if(kernelType == MEM_GLOBAL) {
+        memOpts = std::string("-D MEM_GLOBAL ");
+    } else if(kernelType == MEM_LOCAL) {
+        memOpts = std::string("-D MEM_LOCAL ");
+    }
+    
+    if(devices[0].getInfo<CL_DEVICE_TYPE>() != CL_DEVICE_TYPE_CPU && kernelType == MEM_LOCAL) {
+        // reduce locally
+        kernelReduceType = MEM_LOCAL;
+        reduceOpts = std::string("-D LOCAL_REDUCE ");
+    } else {
+        // reduce globally
+        kernelReduceType = MEM_GLOBAL;
+        reduceOpts = std::string("-D GLOBAL_REDUCE ");
+    }
+    
+#ifdef NDEBUG
+    std::string debugOpts = std::string(" ");
+#else
+    std::string debugOpts = std::string("-D DEBUG ");
+#endif
+    
+    std::string options = memOpts + debugOpts + reduceOpts;
+    
+    buildProgram(kernelSources, options);
     
     if(maxDevices == 0)
         useDevices = devices.size();
@@ -64,10 +93,48 @@ void SWE_DimensionalSplittingOpenCL::printDeviceInformation()
     
     std::cout << "Using " << useDevices << " of " << devices.size() << " OpenCL devices." << std::endl;
     
+    std::cout << "Using ";
+    if(kernelType == MEM_GLOBAL) std::cout << "global";
+    else std::cout << "local";
+    std::cout << " memory." << std::endl;
+    
+    std::cout << "Using ";
+    if(kernelReduceType == MEM_GLOBAL) std::cout << "global";
+    else std::cout << "local";
+    std::cout << " maximum reduction." << std::endl;
+    
+    if(kernelType == MEM_LOCAL)
+        std::cout << "Maximum work group size: " << workGroupSize << std::endl;
     std::cout << std::endl;
 }
 
-void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, unsigned int length, cl::Event *waitEvent, cl::Event *event) {
+void SWE_DimensionalSplittingOpenCL::printProfilingInformation()
+{
+#ifdef OPENCL_PROFILING
+    std::cout << "OpenCL Kernel and Memory Operation Profiling:" << std::endl;
+    std::map<std::string, profilingInfo>::const_iterator opItr;
+    for(opItr = profilingEvents.begin(); opItr != profilingEvents.end(); ++opItr) {
+        std::cout << "  " << opItr->first << ": " << std::endl;
+        
+        std::map< ProfilingState, cl_ulong >::const_iterator stateItr;
+        for(stateItr = opItr->second.second.begin(); stateItr != opItr->second.second.end(); ++stateItr) {
+            std::cout << "    ";
+            if(stateItr->first == PROFILING_QUEUE)
+                std::cout << "QUEUE";
+            else if(stateItr->first == PROFILING_SUBMIT)
+                std::cout << "SUBMIT";
+            else
+                std::cout << "EXEC";
+            
+            std::cout << ": " << float(stateItr->second)/1.0e9 << " seconds" << std::endl;
+        }
+    }
+#else
+    std::cout << "OpenCL Kernel and Memory profiling is disabled" << std::endl;
+#endif
+}
+ 
+void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::Buffer &buffer, size_t length, cl::Event *waitEvent, cl::Event *event) {
     cl::Kernel *k;
     
     // List of events a kernel has to wait for
@@ -81,30 +148,27 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
     if(device.getInfo<CL_DEVICE_TYPE>() == CL_DEVICE_TYPE_CPU) {
         // Use CPU optimized kernel
         k = &(kernels["reduceMaximumCPU"]);
-        unsigned int stride = 1;
-        unsigned int block = std::min(std::max(length/1024, (unsigned int)16), (unsigned int)8192);
-        unsigned int items = (unsigned int)ceil((float)length/(float)(block*stride));
+        size_t stride = 1;
+        size_t block = std::min(std::max((size_t)length/1024, (size_t)16), (size_t)8192);
+        size_t items;
         
-        while(items > 1) {
+        do {
+            items = (size_t)ceil((float)length/(float)(block*stride));
+            
             try {
                 k->setArg(0, buffer);
-                k->setArg(1, length);
-                k->setArg(2, block);
-                k->setArg(3, stride);
+                k->setArg(1, (cl_uint)length);
+                k->setArg(2, (cl_uint)block);
+                k->setArg(3, (cl_uint)stride);
             } catch(cl::Error &e) {
                 handleError(e, "Unable to set reduceMaximumCPU kernel arguments");
             }
             
-            items = (unsigned int)ceil((float)length/(float)(block*stride));
-            
-            cl::Event *e;
             cl::Event localEvent;
-            if(items > 1)
-                e = &localEvent;
-            else
-                e = event;    
+            cl::Event *e = (items > 1) ? &localEvent : event;
             try {
-                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);                
+                queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(items), cl::NullRange, &waitList, e);  
+                addProfilingEvent(*e, "reduceMaximumCPU");
             } catch(cl::Error &e) {
                 handleError(e, "Unable to enqueue reduceMaximumCPU kernel");
             }
@@ -114,41 +178,37 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             }
             
             stride *= block;
-        }
+            // avoid stride overflow
+            stride = std::min(stride, length);
+        } while(items > 1);
     } else {
         // Use GPU optimized kernel
         k = &(kernels["reduceMaximum"]);
-        unsigned int stride = 1;
+        size_t stride = 1;
         // get optimal work group size
-        unsigned int workGroup = k->getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+        size_t workGroup = getKernelGroupSize(*k, device);
         assert(workGroup > 1);
         
-        unsigned int groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
-        unsigned int globalSize = workGroup*groupCount;
+        size_t groupCount, globalSize;
         
-        assert(groupCount > 1);
-        
-        while(groupCount > 1) {
+        do {
             try {
                 k->setArg(0, buffer);
-                k->setArg(1, length);
-                k->setArg(2, stride);
+                k->setArg(1, (cl_uint)length);
+                k->setArg(2, (cl_uint)stride);
                 k->setArg(3, cl::__local(workGroup*sizeof(cl_float)));
             } catch(cl::Error &e) {
                 handleError(e, "Unable to set reduceMaximum kernel arguments");
             }
-            
-            groupCount = (unsigned int)ceil((float)length/(float)(workGroup*stride));
+            groupCount = (size_t)ceil((float)length/(float)(workGroup*stride));
             globalSize = workGroup*groupCount;
             
-            cl::Event *e;
+            
             cl::Event localEvent;
-            if(groupCount > 1)
-                e = &localEvent;
-            else
-                e = event;
+            cl::Event *e = (groupCount > 1) ? &localEvent : event;
             try {
                 queue.enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(globalSize), cl::NDRange(workGroup), &waitList, e);                
+                addProfilingEvent(*e, "reduceMaximum");
             } catch(cl::Error &e) {
                 handleError(e, "Unable to enqueue reduceMaximum kernel");
             }
@@ -158,7 +218,9 @@ void SWE_DimensionalSplittingOpenCL::reduceMaximum(cl::CommandQueue &queue, cl::
             }
             
             stride *= workGroup;
-        }
+            // avoid stride overflow
+            stride = std::min(stride, length);
+        } while(groupCount > 1);
     }
     
     queue.flush();
@@ -172,7 +234,7 @@ void SWE_DimensionalSplittingOpenCL::calculateBufferChunks(size_t cols, size_t d
     <pre>
     Updates       *-----*-----*--0--*-----*                                           
                                           *-----*-----*--1--*-----*             
-                                                                  *--2--*      
+                                                                  *--2--*-----*      
                                                                                
     Edges         0     1     2     3     4     5     6     7     8     9
             |     |     |     |     |     |     |     |     |     |     |     |
@@ -225,9 +287,6 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
             handleError(e, "Unable to create variable buffers");
         }
         
-        if(i == useDevices-1)
-            size -= colSize; // NetUpdates of last device is one column smaller
-        
         // These buffers are named for Xsweep but will also be used in the Ysweep
         try {
             hNetUpdatesLeft.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
@@ -237,6 +296,16 @@ void SWE_DimensionalSplittingOpenCL::createBuffers()
             waveSpeeds.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, size));
         } catch(cl::Error &e) {
             handleError(e, "Unable to create update buffers");
+        }
+        
+        if(i < useDevices-1) {
+            // create edge copy buffers
+            try {
+                hNetUpdatesLeftEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
+                huNetUpdatesLeftEdgeCopy.push_back(cl::Buffer(context, CL_MEM_READ_WRITE, colSize));
+            } catch(cl::Error &e) {
+                handleError(e, "Unable to create edge copy buffers");
+            }
         }
     }
 }
@@ -264,6 +333,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
         size_t length = bufferChunks[i].second;
         try {
             queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length), cl::NullRange, NULL, &event);
+            addProfilingEvent(event, "set top/bottom boundary");
         } catch(cl::Error &e) {
             handleError(e, "Unable to enqueue setBottomTopBoundary kernel");
         }
@@ -284,6 +354,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     try {
         queues[0].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+        addProfilingEvent(event, "set left boundary");
     } catch(cl::Error &e) {
         handleError(e, "Unable to enqueue setLeftBoundary kernel");
     }
@@ -304,6 +375,7 @@ void SWE_DimensionalSplittingOpenCL::setBoundaryConditions()
     
     try {
         queues[useDevices-1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &waitList, &event);
+        addProfilingEvent(event, "set right boundary");
     } catch(cl::Error &e) {
         handleError(e, "Unable to enqueue setRightBoundary kernel");
     }
@@ -329,6 +401,7 @@ void SWE_DimensionalSplittingOpenCL::syncBuffersBeforeRead(std::vector< std::pai
             size_t size = ((j == useDevices-1) ? length : (length-1)) * colSize;
             float* dst = buffers[i].second + (start*y);
             queues[j].enqueueReadBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, dst, NULL, &event);
+            addProfilingEvent(event, "sync before read");
             events.push_back(event);
         }
     }
@@ -350,6 +423,7 @@ void SWE_DimensionalSplittingOpenCL::syncBuffersAfterWrite(std::vector< std::pai
             size_t size = length * colSize;
             float* src = buffers[i].second + (start*y);
             queues[j].enqueueWriteBuffer((*buffers[i].first)[j], CL_FALSE, 0, size, src, NULL, &event);
+            addProfilingEvent(event, "sync after write");
             events.push_back(event);
         }
     }
@@ -445,6 +519,20 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_XSweep_netUpdates"]);
         
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            
+            size_t groupSize, globalSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == MEM_LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalSize = getKernelRange(groupSize, length-1);
+                globalRange = cl::NDRange(globalSize, y);
+                localRange = cl::NDRange(groupSize, 1);
+            } else {
+                globalRange = cl::NDRange(length-1, y);
+                localRange = cl::NullRange;
+            }
             k->setArg(0, hd[i]);
             k->setArg(1, hud[i]);
             k->setArg(2, bd[i]);
@@ -453,15 +541,34 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
             k->setArg(7, waveSpeeds[i]);
-            
-            length = bufferChunks[i].second;
+            if(kernelType == MEM_LOCAL) {
+                k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(16, (unsigned int)length-1);
+                k->setArg(17, (unsigned int)y);
+            }
             
             cl::Event sweepEvent;
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, NULL, &sweepEvent);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, NULL, &sweepEvent);
+            addProfilingEvent(sweepEvent, "X-Sweep");
             
             // reduce waveSpeed Maximum
             cl::Event maximumEvent;
-            reduceMaximum(queues[i], waveSpeeds[i], (length-1) * y, &sweepEvent, &maximumEvent);
+            size_t maxWaveSpeedLength;
+            if(kernelReduceType == MEM_LOCAL) {
+                // local reduction
+                maxWaveSpeedLength = y * globalSize/groupSize;
+            } else {
+                // global reduction
+                maxWaveSpeedLength = (length-1) * y;
+            }
+            reduceMaximum(queues[i], waveSpeeds[i], maxWaveSpeedLength, &sweepEvent, &maximumEvent);
             waitList.push_back(maximumEvent);
         }
         
@@ -472,7 +579,9 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         float maxWaveSpeed = -INFINITY;
         for(unsigned int i = 0; i < useDevices; i++) {
             float result;
-            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result);
+            cl::Event e;
+            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result, NULL, &e);
+            addProfilingEvent(e, "read maxWaveSpeed (X)");
             maxWaveSpeed = std::max(maxWaveSpeed, result);
         }
         
@@ -480,18 +589,47 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         maxTimestep = dx/maxWaveSpeed * 0.4f;
         
         // Copy net update buffers at edges from device n+1 to device n
-        for(unsigned int i = 0; i < useDevices-1; i++) {
-            // We're initiating a copy from device n (to fetch data from device n+1)
-            length = bufferChunks[i].second;
-            size_t offset = (length-1)*colSize;
+        for(unsigned int i = 0; i < useDevices-1; i++) {            
             cl::Event e;
-            queues[i].enqueueCopyBuffer(hNetUpdatesLeft[i+1], hNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
+            std::vector<cl::Event> copyWaitListH, copyWaitListHu;
+            unsigned int cols;
+            
+            cols = (unsigned int)bufferChunks[i+1].second;
+            k = &(kernels["writeNetUpdatesEdgeCopy"]);
+            // READ MEMORY TO EDGE COPY ON DEVICE i+1
+            // write h
+            k->setArg(0, hNetUpdatesLeft[i+1]);
+            k->setArg(1, hNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i+1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &e);
+            addProfilingEvent(e, "writeNetUpdatesEdgeCopy");
+            copyWaitListH.push_back(e);
+            
+            // write hu
+            k->setArg(0, huNetUpdatesLeft[i+1]);
+            k->setArg(1, huNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i+1].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, NULL, &e);
+            addProfilingEvent(e, "writeNetUpdatesEdgeCopy");
+            copyWaitListHu.push_back(e);
+            
+            // READ EDGE COPY ON DEVICE i INTO MEMORY
+            cols = (unsigned int)bufferChunks[i].second;
+            k = &(kernels["readNetUpdatesEdgeCopy"]);
+            // read h
+            k->setArg(0, hNetUpdatesLeft[i]);
+            k->setArg(1, hNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &copyWaitListH, &e);
+            addProfilingEvent(e, "readNetUpdatesEdgeCopy");
             deviceWaitList[i].push_back(e);
-            queues[i].enqueueCopyBuffer(hNetUpdatesRight[i+1], hNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
-            deviceWaitList[i].push_back(e);
-            queues[i].enqueueCopyBuffer(huNetUpdatesLeft[i+1], huNetUpdatesLeft[i], 0, offset, colSize, NULL, &e);
-            deviceWaitList[i].push_back(e);
-            queues[i].enqueueCopyBuffer(huNetUpdatesRight[i+1], huNetUpdatesRight[i], 0, offset, colSize, NULL, &e);
+            
+            // read hu
+            k->setArg(0, huNetUpdatesLeft[i]);
+            k->setArg(1, huNetUpdatesLeftEdgeCopy[i]);
+            k->setArg(2, cols);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(h.getRows()), cl::NullRange, &copyWaitListHu, &e);
+            addProfilingEvent(e, "readNetUpdatesEdgeCopy");
             deviceWaitList[i].push_back(e);
         }
         
@@ -499,6 +637,20 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         k = &(kernels["dimensionalSplitting_XSweep_updateUnknowns"]);
         float dt_dx = maxTimestep / dx;
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            
+            size_t groupSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == MEM_LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalRange = cl::NDRange(getKernelRange(groupSize, length-1), y);
+                localRange = cl::NDRange(groupSize, 1);
+            } else {
+                globalRange = cl::NDRange(length-1, y);
+                localRange = cl::NullRange;
+            }
+            
             k->setArg(0, dt_dx);
             k->setArg(1, hd[i]);
             k->setArg(2, hud[i]);
@@ -506,12 +658,20 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(4, hNetUpdatesRight[i]);
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
+            if(kernelType == MEM_LOCAL) {
+                k->setArg(7, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(8, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(9, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(10, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, (unsigned int)length-1);
+                k->setArg(14, (unsigned int)y);
+            }
             
             cl::Event e;
-            length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--; // If this is the last buffer, do not try to update the last column
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length-1, y), cl::NullRange, &deviceWaitList[i], &e);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
+            addProfilingEvent(e, "X-Update");
             waitList.push_back(e);
         }
         
@@ -525,8 +685,10 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             
             queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
             deviceWaitList[i+1].push_back(e);
+            addProfilingEvent(e, "copy edges");
             queues[i+1].enqueueCopyBuffer(hud[i], hud[i+1], offset, 0, colSize, &waitList, &e);
             deviceWaitList[i+1].push_back(e);
+            addProfilingEvent(e, "copy edges");
             // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
         }
         
@@ -535,6 +697,21 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
         // enqueue Y-Sweep Kernel
         k = &(kernels["dimensionalSplitting_YSweep_netUpdates"]);
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            
+            size_t groupSize, globalSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == MEM_LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalSize = getKernelRange(groupSize, y-1);
+                globalRange = cl::NDRange(length, globalSize);
+                localRange = cl::NDRange(1, groupSize);                
+            } else {
+                globalRange = cl::NDRange(length, y-1);
+                localRange = cl::NullRange;
+            }
+            
             k->setArg(0, hd[i]);
             k->setArg(1, hvd[i]);
             k->setArg(2, bd[i]);
@@ -543,21 +720,83 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
             k->setArg(7, waveSpeeds[i]);
+            if(kernelType == MEM_LOCAL) {
+                k->setArg(8, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(9, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(10, cl::__local((groupSize+1)*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(14, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(15, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(16, (unsigned int)length);
+                k->setArg(17, (unsigned int)y-1);
+            }
             
             cl::Event e;
-            length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--;
-            
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-1), cl::NullRange, &deviceWaitList[i], &e);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
+            addProfilingEvent(e, "Y-Sweep");
             deviceWaitList[i].clear();
             deviceWaitList[i].push_back(e);
+            
+#ifndef NDEBUG
+            // reduce waveSpeed Maximum
+            cl::Event maximumEvent;
+            size_t maxWaveSpeedLength;
+            if(kernelReduceType == MEM_LOCAL) {
+                // local reduction
+                maxWaveSpeedLength = length * globalSize/groupSize;
+            } else {
+                // global reduction
+                maxWaveSpeedLength = length * (y-1);
+            }
+            reduceMaximum(queues[i], waveSpeeds[i], maxWaveSpeedLength, &e, &maximumEvent);
+            waitList.push_back(maximumEvent);
+#endif
         }
+        
+#ifndef NDEBUG
+        cl::Event::waitForEvents(waitList);
+        waitList.clear();
+        // Read maximum
+        float maxWaveSpeedY = -INFINITY;
+        for(unsigned int i = 0; i < useDevices; i++) {
+            float result;
+            cl::Event e;
+            queues[i].enqueueReadBuffer(waveSpeeds[i], CL_TRUE, 0, sizeof(cl_float), &result, &waitList, &e);
+            addProfilingEvent(e, "read maxWaveSpeed (Y)");
+            maxWaveSpeedY = std::max(maxWaveSpeedY, result);
+        }
+        
+        // Check CFL condition
+        float maxTimestepY = .5f * dy / maxWaveSpeed;
+        if(maxTimestepY >= maxTimestep) {
+            // OK, everything's fine
+        } else {
+            // Oops, CFL condition is NOT satisfied
+            std::cerr << "WARNING: CFL condition is not satisfied in y-sweep: "
+                      << maxTimestepY << " < " << maxTimestep << std::endl;
+        }
+#endif
 
         // enqueue netUpdate Kernel (Y-Sweep)
         k = &(kernels["dimensionalSplitting_YSweep_updateUnknowns"]);
         float dt_dy = maxTimestep / dy;
         for(unsigned int i = 0; i < useDevices; i++) {
+            
+            length = bufferChunks[i].second;
+            
+            size_t groupSize;
+            cl::NDRange globalRange, localRange;
+            if(kernelType == MEM_LOCAL) {
+                groupSize = getKernelGroupSize(*k, devices[i]);
+                globalRange = cl::NDRange(length, getKernelRange(groupSize, y-2));
+                localRange = cl::NDRange(1, groupSize);
+            } else {
+                globalRange = cl::NDRange(length, y-2);
+                localRange = cl::NullRange;
+            }
+            
             k->setArg(0, dt_dy);
             k->setArg(1, hd[i]);
             k->setArg(2, hvd[i]);
@@ -565,29 +804,37 @@ void SWE_DimensionalSplittingOpenCL::computeNumericalFluxes()
             k->setArg(4, hNetUpdatesRight[i]);
             k->setArg(5, huNetUpdatesLeft[i]);
             k->setArg(6, huNetUpdatesRight[i]);
-            
+            if(kernelType == MEM_LOCAL) {
+                k->setArg(7, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(8, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(9, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(10, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(11, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(12, cl::__local(groupSize*sizeof(cl_float)));
+                k->setArg(13, (unsigned int)length);
+                k->setArg(14, (unsigned int)y-1);
+            }
             
             cl::Event e;
-            length = bufferChunks[i].second;
-            if(i == useDevices-1)
-                length--;
-            
-            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, cl::NDRange(length, y-2), cl::NullRange, &deviceWaitList[i], &e);
+            queues[i].enqueueNDRangeKernel(*k, cl::NullRange, globalRange, localRange, &deviceWaitList[i], &e);
+            addProfilingEvent(e, "Y-Update");
             waitList.push_back(e);
         }
         
         // Copy updated edge columns after Y-Sweep so we ensure that the overlapping 
         // edge columns really have identical values
         for(unsigned int i = 0; i < useDevices-1; i++) {
-            // We're initiating a copy from device n (to fetch data from device n+1)
+            // We're initiating a copy from device n+1 (to fetch data from device n)
             length = bufferChunks[i].second;
             size_t offset = (length-1)*colSize;
             cl::Event e;
             deviceWaitList[i+1].clear();
             
             queues[i+1].enqueueCopyBuffer(hd[i], hd[i+1], offset, 0, colSize, &waitList, &e);
+            addProfilingEvent(e, "copy edges (after Y-update)");
             waitList.push_back(e);
             queues[i+1].enqueueCopyBuffer(hvd[i], hvd[i+1], offset, 0, colSize, &waitList, &e);
+            addProfilingEvent(e, "copy edges (after Y-update)");
             waitList.push_back(e);
             // Note that we do not need to copy hvd, since vertical momentum is not updated in the X-Sweep
         }

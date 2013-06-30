@@ -111,6 +111,8 @@ vars.AddVariables(
   
   BoolVariable( 'useNetCDFCache', 'load full netcdf files into memory for faster access', False ),
   
+  BoolVariable( 'openCLProfiling', 'enable profiling of OpenCL Events', False ),
+  
   BoolVariable( 'xmlRuntime', 'use a xml-file for runtime parameters', False )
 )
 
@@ -198,7 +200,8 @@ env.Append(CCFLAGS=['-fmessage-length=0'])
 # set (pre-)compiler flags for the compile modes
 if env['compileMode'] == 'debug':
   env.Append(CPPDEFINES=['DEBUG'])
-
+  env['openCLProfiling'] = True
+  
   if env['compiler'] == 'gnu':
     env.Append(CCFLAGS=['-O0','-g3','-Wall'])
 
@@ -214,6 +217,7 @@ elif env['compileMode'] == 'release':
   elif env['compiler'] == 'intel':
     env.Append(CCFLAGS=['-O2', '-xhost'])
 elif env['compileMode'] == 'analysis':
+  env['openCLProfiling'] = True
   env.Append(CPPDEFINES=['NDEBUG'])
   env.Append(CCFLAGS=['-fno-inline'])
   if env['compiler'] == 'gnu':
@@ -309,6 +313,9 @@ if env['parallelization'] == 'opencl':
     env.Append(LINKFLAGS='-framework OpenCL')
   else:
     env.Append(LIBS='OpenCL')
+
+  if env['openCLProfiling']:
+      env.Append(CPPDEFINES=['OPENCL_PROFILING'])
 
 if env['openGL'] == True:
   env.Append(LIBS=['SDL', 'GL', 'GLU'])
